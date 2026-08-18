@@ -27,7 +27,9 @@ Convex remains the source of truth. Critical mobile writes will use a persistent
 
 ## Authentication
 
-Convex Auth is the requested identity system. It will be initialized after the Convex development deployment exists. Initial roles are owner, manager, and cashier; permissions are enforced by backend helpers, not only route visibility.
+Convex Auth is the identity system. Development email/password authentication is configured, and native tokens are stored with Expo SecureStore. Password reset and email verification are launch blockers for production and require an email provider.
+
+Roles are modeled as shop memberships: owner, manager, and cashier. Permissions are enforced by backend helpers, not only route visibility.
 
 ## Reporting
 

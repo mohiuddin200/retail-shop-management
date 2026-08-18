@@ -1,8 +1,20 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useQuery } from 'convex/react';
 import { StyleSheet, View } from 'react-native';
 
+import { api } from '../../convex/_generated/api';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+
+function ConvexConnectionStatus() {
+  const health = useQuery(api.health.check);
+
+  return (
+    <ThemedText style={styles.description} themeColor="textSecondary" type="small">
+      Convex is {health?.status === 'ok' ? 'connected and responding.' : 'connecting…'}
+    </ThemedText>
+  );
+}
 
 export function FoundationNotice({ isConvexConfigured }: { isConvexConfigured: boolean }) {
   return (
@@ -12,12 +24,13 @@ export function FoundationNotice({ isConvexConfigured }: { isConvexConfigured: b
       </View>
       <View style={styles.content}>
         <ThemedText type="smallBold">Foundation ready</ThemedText>
-        <ThemedText style={styles.description} themeColor="textSecondary" type="small">
-          Expo Router and the application shell are configured. Convex is{' '}
-          {isConvexConfigured
-            ? 'connected through the local environment.'
-            : 'ready to connect after deployment setup.'}
-        </ThemedText>
+        {isConvexConfigured ? (
+          <ConvexConnectionStatus />
+        ) : (
+          <ThemedText style={styles.description} themeColor="textSecondary" type="small">
+            Add the Convex deployment URL to connect the backend.
+          </ThemedText>
+        )}
       </View>
     </View>
   );
