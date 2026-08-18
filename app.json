@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "retail-shop-management",
+    "name": "Retail Shop Manager",
     "slug": "retail-shop-management",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "retailshopmanagement",
-    "userInterfaceStyle": "automatic",
+    "scheme": "retailshopmanager",
+    "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#E1F2E8",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -28,7 +28,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#1D6B43",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
