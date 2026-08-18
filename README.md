@@ -58,6 +58,7 @@ npm run convex:once
 
 ## Project documents
 
+- [Project progress](docs/progress.md)
 - [Architecture decisions](docs/architecture.md)
 - [Delivery roadmap](docs/roadmap.md)
 - [Software requirements](docs/requirements/retail-shop-management-srd.md)
