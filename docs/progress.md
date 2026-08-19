@@ -1,6 +1,6 @@
 # Project progress
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Completed
 
@@ -14,13 +14,13 @@ Last updated: 2026-08-18
 - [x] Add backend health, current-user, and shop functions
 - [x] Add architecture, roadmap, and requirements documentation
 - [x] Push the project to GitHub
+- [x] Build sign-up and sign-in screens
+- [x] Add protected navigation for authenticated users
+- [x] Build initial shop creation and owner onboarding
+- [x] Connect the dashboard to the authenticated shop
 
 ## Next
 
-- [ ] Build sign-up and sign-in screens
-- [ ] Add protected navigation for authenticated users
-- [ ] Build initial shop creation and owner onboarding
-- [ ] Connect the dashboard to the authenticated shop
 - [ ] Start product and inventory management
 
 Update this checklist whenever a milestone is completed or the immediate priorities change.

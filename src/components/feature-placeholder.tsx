@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, PropsWithChildren } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppScreen } from '@/components/app-screen';
@@ -8,15 +8,22 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-type FeaturePlaceholderProps = {
+type FeaturePlaceholderProps = PropsWithChildren<{
   icon: IconName;
   phase: string;
   steps: string[];
   summary: string;
   title: string;
-};
+}>;
 
-export function FeaturePlaceholder({ icon, phase, steps, summary, title }: FeaturePlaceholderProps) {
+export function FeaturePlaceholder({
+  children,
+  icon,
+  phase,
+  steps,
+  summary,
+  title,
+}: FeaturePlaceholderProps) {
   return (
     <AppScreen>
       <View style={styles.hero}>
@@ -49,6 +56,8 @@ export function FeaturePlaceholder({ icon, phase, steps, summary, title }: Featu
           ))}
         </View>
       </View>
+
+      {children}
     </AppScreen>
   );
 }

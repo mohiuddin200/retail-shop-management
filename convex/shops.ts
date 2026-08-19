@@ -32,8 +32,8 @@ export const createInitialShop = mutation({
       throw new ConvexError("Currency must be a three-letter ISO code.");
     }
 
-    if (!timezone) {
-      throw new ConvexError("Timezone is required.");
+    if (!isValidTimeZone(timezone)) {
+      throw new ConvexError("Timezone must be a valid IANA timezone.");
     }
 
     const now = Date.now();
@@ -59,6 +59,30 @@ export const createInitialShop = mutation({
   },
 });
 
+export const getCurrentForUser = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("asc")
+      .first();
+
+    if (!membership) {
+      return null;
+    }
+
+    const shop = await ctx.db.get(membership.shopId);
+
+    if (!shop) {
+      throw new ConvexError("Shop membership data is incomplete.");
+    }
+
+    return { membership, shop };
+  },
+});
+
 export const listForCurrentUser = query({
   args: {},
   handler: async (ctx) => {
@@ -78,3 +102,16 @@ export const listForCurrentUser = query({
     );
   },
 });
+
+function isValidTimeZone(timezone: string) {
+  if (!timezone) {
+    return false;
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
