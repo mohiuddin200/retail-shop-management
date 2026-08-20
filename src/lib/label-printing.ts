@@ -119,3 +119,141 @@ export function qrMatrixPath(matrix: QrMatrix) {
 
   return commands.join("");
 }
+
+export const A4_PAGE_CSS = `
+@page {
+  size: 210mm 297mm;
+  margin: 13.5mm 9mm;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #000000;
+  font-family: Arial, Helvetica, sans-serif;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.sheet {
+  display: grid;
+  grid-template-columns: repeat(4, 48mm);
+  grid-template-rows: repeat(9, 30mm);
+  width: 192mm;
+  height: 270mm;
+  break-after: page;
+  page-break-after: always;
+}
+.sheet:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+.label {
+  align-items: center;
+  background: #ffffff;
+  border: 0.15mm dashed #000000;
+  box-sizing: border-box;
+  display: flex;
+  gap: 2mm;
+  height: 30mm;
+  overflow: hidden;
+  padding: 2mm;
+  width: 48mm;
+}
+.qr {
+  flex: 0 0 24mm;
+  height: 24mm;
+  width: 24mm;
+}
+.qr svg {
+  display: block;
+  height: 100%;
+  shape-rendering: crispEdges;
+  width: 100%;
+}
+.copy {
+  flex: 1;
+  min-width: 0;
+}
+.category {
+  font-size: 11pt;
+  font-weight: 700;
+  line-height: 1.05;
+  margin-bottom: 1.5mm;
+}
+.sku {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7pt;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+`;
+
+export type LabelHtmlOptions = {
+  categoryCode: string;
+  documentTitle: string;
+  labels: readonly LabelUnit[];
+  onProgress?: (completed: number, total: number) => void;
+};
+
+export function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character];
+  });
+}
+
+export function qrMatrixToInlineSvg(matrix: QrMatrix, accessibleLabel: string) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${matrix.totalSize} ${matrix.totalSize}" role="img" aria-label="${escapeHtml(accessibleLabel)}"><rect width="${matrix.totalSize}" height="${matrix.totalSize}" fill="#ffffff"/><path d="${qrMatrixPath(matrix)}" fill="#000000"/></svg>`;
+}
+
+export async function buildA4LabelHtml({
+  categoryCode,
+  documentTitle,
+  labels,
+  onProgress,
+}: LabelHtmlOptions) {
+  if (labels.length === 0) {
+    throw new Error("Select at least one label.");
+  }
+  if (labels.length > MAX_LABEL_JOB_SIZE) {
+    throw new Error(`A label job cannot exceed ${MAX_LABEL_JOB_SIZE} labels.`);
+  }
+
+  const renderedLabels: string[] = [];
+  const chunkSize = 25;
+  for (let index = 0; index < labels.length; index += 1) {
+    const label = labels[index];
+    const matrix = createQrMatrix(label.qrPayload);
+    renderedLabels.push(
+      `<div class="label"><div class="qr">${qrMatrixToInlineSvg(matrix, `QR code containing ${label.qrPayload}`)}</div><div class="copy"><div class="category">${escapeHtml(categoryCode)}</div><div class="sku">${escapeHtml(label.sku)}</div></div></div>`,
+    );
+    onProgress?.(index + 1, labels.length);
+
+    if ((index + 1) % chunkSize === 0 && index + 1 < labels.length) {
+      await yieldToEventLoop();
+    }
+  }
+
+  const sheets: string[] = [];
+  for (let start = 0; start < renderedLabels.length; start += A4_LABELS_PER_PAGE) {
+    const pageLabels = renderedLabels.slice(start, start + A4_LABELS_PER_PAGE);
+    const blankCount = A4_LABELS_PER_PAGE - pageLabels.length;
+    sheets.push(
+      `<section class="sheet">${pageLabels.join("")}${'<div class="label" aria-hidden="true"></div>'.repeat(blankCount)}</section>`,
+    );
+  }
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(documentTitle)}</title><style>${A4_PAGE_CSS}</style></head><body>${sheets.join("")}</body></html>`;
+}
+
+function yieldToEventLoop() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}

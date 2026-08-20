@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  A4_PAGE_CSS,
   A4_LABELS_PER_PAGE,
   MAX_LABEL_JOB_SIZE,
   QR_QUIET_ZONE,
+  buildA4LabelHtml,
   createQrMatrix,
+  escapeHtml,
   expandLabelCopies,
   labelPageCount,
   parseLabelRange,
@@ -83,5 +86,46 @@ describe("QR matrix generation", () => {
     const last = createQrMatrix("RSM:1:SKU:SHT-20260820-0001-500");
 
     expect(first.modules).not.toEqual(last.modules);
+  });
+});
+
+describe("A4 printable HTML", () => {
+  it("defines the exact A4 page, margins, grid, and label dimensions", () => {
+    expect(A4_PAGE_CSS).toContain("size: 210mm 297mm;");
+    expect(A4_PAGE_CSS).toContain("margin: 13.5mm 9mm;");
+    expect(A4_PAGE_CSS).toContain("grid-template-columns: repeat(4, 48mm);");
+    expect(A4_PAGE_CSS).toContain("grid-template-rows: repeat(9, 30mm);");
+    expect(A4_PAGE_CSS).toContain("height: 30mm;");
+    expect(A4_PAGE_CSS).toContain("width: 48mm;");
+  });
+
+  it("escapes every inserted text value", () => {
+    expect(escapeHtml(`A&B <tag> "quote" 'apostrophe'`)).toBe(
+      "A&amp;B &lt;tag&gt; &quot;quote&quot; &#39;apostrophe&#39;",
+    );
+  });
+
+  it("builds pages in asynchronous chunks with escaped text and shared QR SVGs", async () => {
+    const labels = Array.from({ length: 37 }, (_, index) => ({
+      qrPayload: `RSM:1:SKU:SHT&${index + 1}`,
+      sku: index === 0 ? "<script>unsafe</script>" : `SHT-${index + 1}`,
+      unitNumber: index + 1,
+    }));
+    const progress: number[] = [];
+
+    const html = await buildA4LabelHtml({
+      categoryCode: "S&<",
+      documentTitle: "Shop & <labels>",
+      labels,
+      onProgress: (completed) => progress.push(completed),
+    });
+
+    expect((html.match(/class="sheet"/g) ?? [])).toHaveLength(2);
+    expect((html.match(/class="label"/g) ?? [])).toHaveLength(72);
+    expect(html).toContain("S&amp;&lt;");
+    expect(html).toContain("&lt;script&gt;unsafe&lt;/script&gt;");
+    expect(html).not.toContain("<script>unsafe</script>");
+    expect(html).toContain('aria-label="QR code containing RSM:1:SKU:SHT&amp;1"');
+    expect(progress.at(-1)).toBe(37);
   });
 });

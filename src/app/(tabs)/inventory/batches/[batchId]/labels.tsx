@@ -1,12 +1,13 @@
 import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "convex/react";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { api } from "@/../convex/_generated/api";
 import type { Id } from "@/../convex/_generated/dataModel";
 import { AppScreen } from "@/components/app-screen";
 import {
+  InventoryButton,
   InventoryCard,
   InventoryField,
   InventoryHeader,
@@ -16,7 +17,13 @@ import { QrCodeSvg } from "@/components/qr-code-svg";
 import { ThemedText } from "@/components/themed-text";
 import { Colors, Radius, Spacing } from "@/constants/theme";
 import {
+  labelActionError,
+  printA4LabelHtml,
+  shareA4LabelPdf,
+} from "@/lib/label-platform";
+import {
   A4_LABELS_PER_PAGE,
+  buildA4LabelHtml,
   expandLabelCopies,
   labelPageCount,
   parseLabelRange,
@@ -30,6 +37,8 @@ export default function LabelPrintingScreen() {
   const [startValue, setStartValue] = useState("1");
   const [editedEndValue, setEditedEndValue] = useState<string | null>(null);
   const [copies, setCopies] = useState<1 | 2>(1);
+  const [activeAction, setActiveAction] = useState<"pdf" | "print" | null>(null);
+  const [generationProgress, setGenerationProgress] = useState(0);
   const endValue = editedEndValue ?? String(detail?.batch.quantity ?? "");
 
   let range: ReturnType<typeof parseLabelRange> | null = null;
@@ -53,13 +62,43 @@ export default function LabelPrintingScreen() {
       : "skip",
   );
 
-  const previewLabels = useMemo(
-    () =>
-      labelData
-        ? expandLabelCopies(labelData.units, copies).slice(0, A4_LABELS_PER_PAGE)
-        : [],
+  const jobLabels = useMemo(
+    () => (labelData ? expandLabelCopies(labelData.units, copies) : []),
     [copies, labelData],
   );
+  const previewLabels = jobLabels.slice(0, A4_LABELS_PER_PAGE);
+
+  const runLabelAction = async (action: "pdf" | "print") => {
+    if (!labelData || jobLabels.length === 0) {
+      return;
+    }
+
+    setActiveAction(action);
+    setGenerationProgress(0);
+    try {
+      const html = await buildA4LabelHtml({
+        categoryCode: labelData.category.code,
+        documentTitle: `${labelData.shop.name} batch ${labelData.batch.batchNumber} labels`,
+        labels: jobLabels,
+        onProgress: (completed, total) =>
+          setGenerationProgress(Math.round((completed / total) * 100)),
+      });
+
+      if (action === "print") {
+        await printA4LabelHtml(html);
+      } else {
+        await shareA4LabelPdf(html);
+      }
+    } catch (error) {
+      Alert.alert(
+        action === "print" ? "Labels not printed" : "PDF not shared",
+        labelActionError(error),
+      );
+    } finally {
+      setActiveAction(null);
+      setGenerationProgress(0);
+    }
+  };
 
   if (!detail) {
     return (
@@ -162,6 +201,36 @@ export default function LabelPrintingScreen() {
           <A4Preview categoryCode={labelData?.category.code ?? ""} labels={previewLabels} />
         )}
       </View>
+
+      <InventoryCard>
+        <ThemedText type="subtitle">4. Print or export</ThemedText>
+        {activeAction ? (
+          <ThemedText accessibilityRole="alert" themeColor="textSecondary" type="small">
+            {generationProgress < 100
+              ? `Generating labels… ${generationProgress}%`
+              : activeAction === "print"
+                ? "Opening the system print dialog…"
+                : "Creating and opening the PDF share sheet…"}
+          </ThemedText>
+        ) : null}
+        <InventoryButton
+          disabled={!labelData || Boolean(rangeError) || activeAction !== null}
+          icon="printer-outline"
+          label="Open system print dialog"
+          loading={activeAction === "print"}
+          onPress={() => runLabelAction("print")}
+        />
+        {Platform.OS !== "web" ? (
+          <InventoryButton
+            disabled={!labelData || Boolean(rangeError) || activeAction !== null}
+            icon="file-pdf-box"
+            label="Create and share PDF"
+            loading={activeAction === "pdf"}
+            onPress={() => runLabelAction("pdf")}
+            secondary
+          />
+        ) : null}
+      </InventoryCard>
     </AppScreen>
   );
 }
