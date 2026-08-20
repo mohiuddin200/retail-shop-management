@@ -1,141 +1,236 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useQuery } from 'convex/react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Link } from "expo-router";
+import { useQuery } from "convex/react";
+import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
 
-import { api } from '@/../convex/_generated/api';
-import { AppScreen } from '@/components/app-screen';
-import { DashboardActionCard } from '@/components/dashboard-action-card';
-import { ThemedText } from '@/components/themed-text';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { api } from "@/../convex/_generated/api";
+import { AppScreen } from "@/components/app-screen";
+import { DashboardActionCard } from "@/components/dashboard-action-card";
+import { ThemedText } from "@/components/themed-text";
+import { Colors, Radius, Spacing } from "@/constants/theme";
+import { formatMoney } from "@/lib/inventory-domain";
+import { buildOverviewSnapshot } from "@/lib/overview-domain";
+
+const overviewImage = require("../../../assets/images/overview-retail-operations.png");
 
 export default function OverviewScreen() {
   const shopContext = useQuery(api.shops.getCurrentForUser);
+  const hasActiveShop = shopContext?.membership.status === "active";
+  const isCashier = shopContext?.membership.role === "cashier";
+  const currentDay = useQuery(
+    api.pos.getCurrentBusinessDay,
+    hasActiveShop ? {} : "skip",
+  );
+  const inventorySummary = useQuery(
+    api.inventory.getSummary,
+    hasActiveShop && !isCashier ? {} : "skip",
+  );
 
-  if (!shopContext || shopContext.membership.status !== 'active') {
+  if (
+    !shopContext ||
+    !hasActiveShop ||
+    currentDay === undefined ||
+    (!isCashier && inventorySummary === undefined)
+  ) {
     return <DashboardLoadingState />;
   }
 
   const { membership, shop } = shopContext;
   const roleLabel = formatRole(membership.role);
-  const isCashier = membership.role === 'cashier';
+  const snapshot = buildOverviewSnapshot({
+    currentDay,
+    inventorySummary: inventorySummary ?? null,
+    role: membership.role,
+  });
 
   return (
     <AppScreen>
-      <View style={styles.hero}>
-        <View style={styles.eyebrow}>
-          <MaterialCommunityIcons color={Colors.light.primary} name="storefront-outline" size={18} />
-          <ThemedText style={styles.eyebrowText} type="smallBold">
-            {roleLabel.toUpperCase()} WORKSPACE
-          </ThemedText>
+      <View style={styles.heroCard}>
+        <View style={styles.heroCopy}>
+          <View style={styles.eyebrow}>
+            <MaterialCommunityIcons
+              color={Colors.light.primary}
+              name="storefront-outline"
+              size={18}
+            />
+            <ThemedText style={styles.eyebrowText} type="smallBold">
+              {roleLabel.toUpperCase()} WORKSPACE
+            </ThemedText>
+          </View>
+
+          <View style={styles.heading}>
+            <ThemedText themeColor="textSecondary" type="smallBold">
+              WELCOME BACK
+            </ThemedText>
+            <ThemedText style={styles.title} type="title">
+              {shop.name}
+            </ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {isCashier
+                ? "Scan products, complete cash sales, and process customer returns from one workspace."
+                : "Monitor the current business day, manage stock, and keep every sale and return connected to permanent inventory."}
+            </ThemedText>
+          </View>
+
+          <View style={styles.shopMeta}>
+            <MetaPill icon="account-key-outline" label={roleLabel} />
+            <MetaPill icon="cash-multiple" label={shop.currencyCode} />
+            <MetaPill icon="map-clock-outline" label={shop.timezone} />
+          </View>
+
+          <Link asChild href="/pos">
+            <Pressable
+              accessibilityLabel="Open point of sale"
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}>
+              <MaterialCommunityIcons
+                color={Colors.light.surface}
+                name="qrcode-scan"
+                size={22}
+              />
+              <ThemedText style={styles.primaryActionText} type="smallBold">
+                Open POS
+              </ThemedText>
+              <MaterialCommunityIcons
+                color={Colors.light.surface}
+                name="arrow-right"
+                size={20}
+              />
+            </Pressable>
+          </Link>
         </View>
 
-        <View style={styles.heading}>
-          <ThemedText themeColor="textSecondary" type="smallBold">
-            WELCOME TO
-          </ThemedText>
-          <ThemedText style={styles.title} type="title">
-            {shop.name}
-          </ThemedText>
-          <ThemedText themeColor="textSecondary">
-            {isCashier
-              ? 'Your workspace is ready for customer sales and daily operations.'
-              : 'Your shop foundation is ready. Organize categories and enter opening stock.'}
-          </ThemedText>
+        <View style={styles.heroMedia}>
+          <Image
+            accessibilityLabel="Shop worker scanning a product label at an organized clothing store counter"
+            accessible
+            resizeMode="cover"
+            source={overviewImage}
+            style={styles.heroImage}
+          />
+          <View style={styles.activeBadge}>
+            <View style={styles.activeDot} />
+            <ThemedText style={styles.activeText} type="smallBold">
+              ACTIVE SHOP
+            </ThemedText>
+          </View>
         </View>
       </View>
 
-      <View style={styles.shopCard}>
-        <View style={styles.cardHeading}>
-          <View style={styles.cardTitleRow}>
-            <MaterialCommunityIcons
-              color={Colors.light.primary}
-              name="shield-check-outline"
-              size={22}
-            />
-            <ThemedText type="smallBold">Active shop</ThemedText>
+      <View style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <View style={styles.sectionHeading}>
+            <ThemedText type="subtitle">Current business day</ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {currentDay
+                ? "Sales and returns stay grouped until an owner or manager ends this explicit day."
+                : "The first business day opens automatically when the first sale is completed."}
+            </ThemedText>
           </View>
-          <View style={styles.activePill}>
-            <View style={styles.activeDot} />
-            <ThemedText style={styles.activeText} type="smallBold">
-              Active
+          <View style={styles.statusPill}>
+            <View
+              style={[
+                styles.statusDot,
+                snapshot.businessDay.statusLabel !== "Open" && styles.statusDotIdle,
+              ]}
+            />
+            <ThemedText style={styles.statusText} type="smallBold">
+              {snapshot.businessDay.dayLabel} · {snapshot.businessDay.statusLabel}
             </ThemedText>
           </View>
         </View>
 
-        <View style={styles.detailsGrid}>
-          <ShopDetail icon="account-key-outline" label="Your role" value={roleLabel} />
-          <ShopDetail icon="cash-multiple" label="Currency" value={shop.currencyCode} />
-          <ShopDetail icon="map-clock-outline" label="Timezone" value={shop.timezone} />
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeading}>
-          <ThemedText type="subtitle">Setup readiness</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            Complete the operational foundation in order so later sales and reports use trustworthy
-            data.
-          </ThemedText>
-        </View>
-
-        <View style={styles.readinessCard}>
-          <ReadinessRow
-            description="Shop details and owner membership are active."
-            icon="check-circle"
-            status="Complete"
-            title="Shop account"
+        <View style={styles.metricsGrid}>
+          <MetricCard
+            detail={`${snapshot.businessDay.unitCount} products sold`}
+            icon="receipt-text-outline"
+            label="Activity"
+            value={`${snapshot.businessDay.saleCount} sales`}
           />
-          <View style={styles.divider} />
-          <ReadinessRow
-            description={isCashier ? "Owners and managers maintain stock and buying costs." : "Define categories and enter opening stock."}
-            icon={isCashier ? "lock-outline" : "arrow-right-circle"}
-            status={isCashier ? "Restricted" : "Next"}
-            title="Inventory foundation"
+          <MetricCard
+            icon="cash-plus"
+            label="Gross sales"
+            value={formatMoney(snapshot.businessDay.grossSalesMinor, shop.currencyCode)}
           />
-          <View style={styles.divider} />
-          <ReadinessRow
-            description={isCashier ? "Scan products and build the customer cart." : "Begin recording sales after inventory exists."}
-            icon={isCashier ? "arrow-right-circle" : "clock-outline"}
-            status={isCashier ? "Next" : "After inventory"}
-            title="Point of sale"
+          <MetricCard
+            detail={`${snapshot.businessDay.returnCount} returns`}
+            icon="cash-refund"
+            label="Refunded"
+            value={formatMoney(snapshot.businessDay.refundAmountMinor, shop.currencyCode)}
+          />
+          <MetricCard
+            icon="cash-check"
+            label="Net cash"
+            value={formatMoney(snapshot.businessDay.netCashMinor, shop.currencyCode)}
           />
         </View>
       </View>
 
+      {snapshot.inventory ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeading}>
+            <ThemedText type="subtitle">Inventory snapshot</ThemedText>
+            <ThemedText themeColor="textSecondary">
+              Current sellable stock and its original recorded buying cost.
+            </ThemedText>
+          </View>
+
+          <View style={styles.metricsGrid}>
+            <MetricCard
+              icon="package-variant"
+              label="Units in stock"
+              value={String(snapshot.inventory.inStockUnitCount)}
+            />
+            <MetricCard
+              icon="cash-multiple"
+              label="Stock cost"
+              value={formatMoney(snapshot.inventory.inStockCostMinor, shop.currencyCode)}
+            />
+            <MetricCard
+              icon="shape-outline"
+              label="Active categories"
+              value={String(snapshot.inventory.activeCategoryCount)}
+            />
+            <MetricCard
+              icon="layers-triple-outline"
+              label="Intake batches"
+              value={String(snapshot.inventory.batchCount)}
+            />
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.section}>
         <View style={styles.sectionHeading}>
-          <ThemedText type="subtitle">Next actions</ThemedText>
+          <ThemedText type="subtitle">Quick actions</ThemedText>
           <ThemedText themeColor="textSecondary">
-            Continue into the existing modules without showing totals that have not been recorded
-            yet.
+            Continue directly into the operational modules available to your role.
           </ThemedText>
         </View>
 
         <View style={styles.actions}>
+          <DashboardActionCard
+            description="Scan SKUs, build a cart, take cash, and process exact-price returns."
+            emphasis
+            href="/pos"
+            icon="qrcode-scan"
+            status="Ready"
+            title="Open point of sale"
+          />
           {!isCashier ? (
             <DashboardActionCard
-              description="Create categories, add stock, and review permanent unit SKUs."
-              emphasis
+              description="Create categories, add stock, review batches, and print unit labels."
               href="/inventory"
               icon="package-variant-closed"
-              status="Ready"
+              status="Live"
               title="Manage inventory"
             />
           ) : null}
           <DashboardActionCard
-            description={isCashier ? "Start the customer sales workflow." : "Review how scanning and multi-item sales will work."}
-            emphasis={isCashier}
-            href="/pos"
-            icon="qrcode-scan"
-            status={isCashier ? "Next" : "Preview"}
-            title={isCashier ? "Open point of sale" : "Preview the sales workflow"}
-          />
-          <DashboardActionCard
-            description="Open account controls and see the later operational modules."
+            description="Open account controls and see reporting and later operational modules."
             href="/more"
-            icon="dots-grid"
-            status="Later"
-            title="Account and operations"
+            icon="chart-box-outline"
+            status="Upcoming"
+            title="Operations and reports"
           />
         </View>
       </View>
@@ -148,136 +243,148 @@ function DashboardLoadingState() {
     <AppScreen>
       <View style={styles.loadingState}>
         <ActivityIndicator color={Colors.light.primary} size="large" />
-        <ThemedText themeColor="textSecondary">Refreshing your shop dashboard…</ThemedText>
+        <ThemedText themeColor="textSecondary">Refreshing your shop overview…</ThemedText>
       </View>
     </AppScreen>
   );
 }
 
-function ShopDetail({
+function MetaPill({
+  icon,
+  label,
+}: {
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
+  label: string;
+}) {
+  return (
+    <View style={styles.metaPill}>
+      <MaterialCommunityIcons color={Colors.light.primary} name={icon} size={17} />
+      <ThemedText type="smallBold">{label}</ThemedText>
+    </View>
+  );
+}
+
+function MetricCard({
+  detail,
   icon,
   label,
   value,
 }: {
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  detail?: string;
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
   label: string;
   value: string;
 }) {
   return (
-    <View style={styles.detail}>
-      <View style={styles.detailIcon}>
-        <MaterialCommunityIcons color={Colors.light.primary} name={icon} size={20} />
+    <View style={styles.metricCard}>
+      <View style={styles.metricIcon}>
+        <MaterialCommunityIcons color={Colors.light.primary} name={icon} size={21} />
       </View>
-      <View style={styles.detailCopy}>
-        <ThemedText themeColor="textSecondary" type="small">
-          {label}
-        </ThemedText>
-        <ThemedText type="smallBold">{value}</ThemedText>
-      </View>
-    </View>
-  );
-}
-
-function ReadinessRow({
-  description,
-  icon,
-  status,
-  title,
-}: {
-  description: string;
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
-  status: string;
-  title: string;
-}) {
-  const isComplete = status === 'Complete';
-  const isNext = status === 'Next';
-
-  return (
-    <View style={styles.readinessRow}>
-      <MaterialCommunityIcons
-        color={isComplete || isNext ? Colors.light.primary : Colors.light.textSecondary}
-        name={icon}
-        size={24}
-      />
-      <View style={styles.readinessCopy}>
-        <ThemedText type="smallBold">{title}</ThemedText>
-        <ThemedText themeColor="textSecondary" type="small">
-          {description}
-        </ThemedText>
-      </View>
-      <ThemedText
-        style={[styles.readinessStatus, isNext && styles.readinessStatusNext]}
-        themeColor={isComplete ? 'primary' : 'textSecondary'}
-        type="smallBold">
-        {status}
+      <ThemedText themeColor="textSecondary" type="small">
+        {label}
       </ThemedText>
+      <ThemedText style={styles.metricValue} type="subtitle">
+        {value}
+      </ThemedText>
+      {detail ? (
+        <ThemedText themeColor="textSecondary" type="small">
+          {detail}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
 
-function formatRole(role: 'cashier' | 'manager' | 'owner') {
+function formatRole(role: "cashier" | "manager" | "owner") {
   switch (role) {
-    case 'owner':
-      return 'Owner';
-    case 'manager':
-      return 'Manager';
-    case 'cashier':
-      return 'Cashier';
+    case "owner":
+      return "Owner";
+    case "manager":
+      return "Manager";
+    case "cashier":
+      return "Cashier";
   }
 }
 
 const styles = StyleSheet.create({
-  hero: {
+  heroCard: {
+    backgroundColor: "#EAF2EC",
+    borderColor: Colors.light.border,
+    borderRadius: Radius.large,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.four,
-    paddingTop: Spacing.two,
+    overflow: "hidden",
+    padding: Spacing.four,
+  },
+  heroCopy: {
+    flexBasis: 300,
+    flexGrow: 1,
+    gap: Spacing.four,
+    justifyContent: "center",
+    minWidth: 0,
   },
   eyebrow: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.light.primaryMuted,
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: Colors.light.surface,
     borderRadius: Radius.pill,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
-  eyebrowText: {
-    color: Colors.light.primary,
-    letterSpacing: 0.8,
-  },
-  heading: {
-    gap: Spacing.two,
-  },
-  title: {
-    fontSize: 40,
-    lineHeight: 46,
-  },
-  shopCard: {
+  eyebrowText: { color: Colors.light.primary, letterSpacing: 0.8 },
+  heading: { gap: Spacing.two },
+  title: { fontSize: 38, lineHeight: 44 },
+  shopMeta: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.two },
+  metaPill: {
+    alignItems: "center",
     backgroundColor: Colors.light.surface,
     borderColor: Colors.light.border,
-    borderRadius: Radius.large,
-    borderWidth: 1,
-    gap: Spacing.four,
-    padding: Spacing.four,
-  },
-  cardHeading: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  cardTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  activePill: {
-    alignItems: 'center',
-    backgroundColor: Colors.light.primaryMuted,
     borderRadius: Radius.pill,
-    flexDirection: 'row',
+    borderWidth: 1,
+    flexDirection: "row",
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
+    paddingVertical: Spacing.two,
+  },
+  primaryAction: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: Colors.light.primary,
+    borderRadius: Radius.medium,
+    flexDirection: "row",
+    gap: Spacing.two,
+    minHeight: 48,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+  },
+  primaryActionText: { color: Colors.light.surface },
+  heroMedia: {
+    flexBasis: 320,
+    flexGrow: 1,
+    justifyContent: "center",
+    minWidth: 0,
+    position: "relative",
+  },
+  heroImage: {
+    aspectRatio: 3 / 2,
+    borderRadius: Radius.medium,
+    width: "100%",
+  },
+  activeBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    borderRadius: Radius.pill,
+    bottom: Spacing.three,
+    flexDirection: "row",
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    position: "absolute",
+    right: Spacing.three,
   },
   activeDot: {
     backgroundColor: Colors.light.primary,
@@ -285,82 +392,62 @@ const styles = StyleSheet.create({
     height: 7,
     width: 7,
   },
-  activeText: {
-    color: Colors.light.primary,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  activeText: { color: Colors.light.primary, fontSize: 11, lineHeight: 14 },
+  section: { gap: Spacing.four },
+  sectionHeading: { flex: 1, gap: Spacing.two },
+  sectionTitleRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.three,
+    justifyContent: "space-between",
   },
-  detail: {
-    alignItems: 'center',
-    backgroundColor: Colors.light.background,
-    borderRadius: Radius.medium,
-    flexBasis: 180,
-    flexDirection: 'row',
-    flexGrow: 1,
-    gap: Spacing.three,
-    minHeight: 72,
-    padding: Spacing.three,
-  },
-  detailIcon: {
-    alignItems: 'center',
+  statusPill: {
+    alignItems: "center",
     backgroundColor: Colors.light.primaryMuted,
-    borderRadius: Radius.medium,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  detailCopy: {
-    flex: 1,
-    gap: Spacing.one,
-  },
-  section: {
-    gap: Spacing.four,
-  },
-  sectionHeading: {
+    borderRadius: Radius.pill,
+    flexDirection: "row",
     gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
   },
-  readinessCard: {
+  statusDot: {
+    backgroundColor: Colors.light.primary,
+    borderRadius: Radius.pill,
+    height: 8,
+    width: 8,
+  },
+  statusDotIdle: { backgroundColor: Colors.light.textSecondary },
+  statusText: { color: Colors.light.primary },
+  metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.three },
+  metricCard: {
     backgroundColor: Colors.light.surface,
     borderColor: Colors.light.border,
     borderRadius: Radius.large,
     borderWidth: 1,
+    flexBasis: 160,
+    flexGrow: 1,
+    gap: Spacing.one,
+    minHeight: 142,
     padding: Spacing.four,
   },
-  readinessRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: Spacing.three,
-    minHeight: 64,
+  metricIcon: {
+    alignItems: "center",
+    backgroundColor: Colors.light.primaryMuted,
+    borderRadius: Radius.medium,
+    height: 40,
+    justifyContent: "center",
+    marginBottom: Spacing.one,
+    width: 40,
   },
-  readinessCopy: {
-    flex: 1,
-    gap: Spacing.one,
-  },
-  readinessStatus: {
-    maxWidth: 96,
-    textAlign: 'right',
-  },
-  readinessStatusNext: {
-    color: Colors.light.primary,
-  },
-  divider: {
-    backgroundColor: Colors.light.border,
-    height: 1,
-    marginVertical: Spacing.two,
-  },
-  actions: {
-    gap: Spacing.three,
-  },
+  metricValue: { fontSize: 21, lineHeight: 27 },
+  actions: { gap: Spacing.three },
+  pressed: { opacity: 0.78 },
   loadingState: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
     gap: Spacing.three,
-    justifyContent: 'center',
+    justifyContent: "center",
     minHeight: 400,
   },
 });

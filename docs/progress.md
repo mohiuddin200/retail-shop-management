@@ -35,9 +35,12 @@ Last updated: 2026-08-20
 - [x] Add immutable one-unit cash returns with exact original-price refunds
 - [x] Restore resalable units and quarantine damaged returns with role enforcement
 - [x] Post late returns to the current business day without mutating closed days
+- [x] Replace setup readiness with a responsive operational Overview dashboard
+- [x] Add role-safe business-day and inventory snapshots with a project hero illustration
 
 ## Next
 
+- [ ] Review the Overview as owner/manager and cashier on phone and wide web, confirming layout and cost visibility
 - [ ] Run authenticated real-device POS and returns acceptance: sell by QR, refund resalable, resell, refund damaged as owner/manager, verify cashier denial, and close a return-only day
 - [ ] Add the finalized daily sales report
 - [ ] Add credit buyers, due balances, and repayments in Phase 2
