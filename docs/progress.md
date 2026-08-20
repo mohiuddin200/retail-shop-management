@@ -36,7 +36,7 @@ Last updated: 2026-08-20
 - [x] Restore resalable units and quarantine damaged returns with role enforcement
 - [x] Post late returns to the current business day without mutating closed days
 - [x] Replace setup readiness with a responsive operational Overview dashboard
-- [x] Add role-safe business-day and inventory snapshots with organized quick actions
+- [x] Add role-safe business-day and inventory snapshots
 
 ## Next
 

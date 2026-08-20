@@ -4,7 +4,6 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { api } from "@/../convex/_generated/api";
 import { AppScreen } from "@/components/app-screen";
-import { DashboardActionCard } from "@/components/dashboard-action-card";
 import { ThemedText } from "@/components/themed-text";
 import { Colors, Radius, Spacing } from "@/constants/theme";
 import { formatMoney } from "@/lib/inventory-domain";
@@ -163,41 +162,6 @@ export default function OverviewScreen() {
         </View>
       ) : null}
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeading}>
-          <ThemedText type="subtitle">Quick actions</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            Continue directly into the operational modules available to your role.
-          </ThemedText>
-        </View>
-
-        <View style={styles.actions}>
-          <DashboardActionCard
-            description="Sell by QR and process returns."
-            emphasis
-            href="/pos"
-            icon="qrcode-scan"
-            status="Ready"
-            title="Point of sale"
-          />
-          {!isCashier ? (
-            <DashboardActionCard
-              description="Manage categories, stock, and labels."
-              href="/inventory"
-              icon="package-variant-closed"
-              status="Live"
-              title="Inventory"
-            />
-          ) : null}
-          <DashboardActionCard
-            description="Account controls and future reports."
-            href="/more"
-            icon="chart-box-outline"
-            status="Upcoming"
-            title="Operations"
-          />
-        </View>
-      </View>
     </AppScreen>
   );
 }
@@ -368,7 +332,6 @@ const styles = StyleSheet.create({
     width: 40,
   },
   metricValue: { fontSize: 21, lineHeight: 27 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.three },
   loadingState: {
     alignItems: "center",
     flex: 1,
