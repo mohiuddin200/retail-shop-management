@@ -2,23 +2,28 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Platform } from "react-native";
 
-const A4_WIDTH_AT_72_PPI = 595;
-const A4_HEIGHT_AT_72_PPI = 842;
+import type { LabelFormat } from "@/lib/label-printing";
 
-export async function printA4LabelHtml(html: string) {
+const PAGE_DIMENSIONS = {
+  a4: { height: 842, width: 595 },
+  thermal: { height: 85, width: 113 },
+} as const;
+
+export async function printLabelHtml(html: string, format: LabelFormat) {
   if (Platform.OS === "web") {
     await printHtmlOnWeb(html);
     return;
   }
 
+  const dimensions = PAGE_DIMENSIONS[format];
   await Print.printAsync({
-    height: A4_HEIGHT_AT_72_PPI,
+    height: dimensions.height,
     html,
-    width: A4_WIDTH_AT_72_PPI,
+    width: dimensions.width,
   });
 }
 
-export async function shareA4LabelPdf(html: string) {
+export async function shareLabelPdf(html: string, format: LabelFormat) {
   if (Platform.OS === "web") {
     throw new Error("PDF export is available in the Android and iOS apps.");
   }
@@ -28,10 +33,11 @@ export async function shareA4LabelPdf(html: string) {
     throw new Error("PDF sharing is not available on this device.");
   }
 
+  const dimensions = PAGE_DIMENSIONS[format];
   const result = await Print.printToFileAsync({
-    height: A4_HEIGHT_AT_72_PPI,
+    height: dimensions.height,
     html,
-    width: A4_WIDTH_AT_72_PPI,
+    width: dimensions.width,
   });
   await Sharing.shareAsync(result.uri, {
     UTI: "com.adobe.pdf",

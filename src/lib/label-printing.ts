@@ -190,6 +190,68 @@ html, body {
 }
 `;
 
+export const THERMAL_PAGE_CSS = `
+@page {
+  size: 40mm 30mm;
+  margin: 0;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #000000;
+  font-family: Arial, Helvetica, sans-serif;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.thermal-label {
+  align-items: center;
+  background: #ffffff;
+  box-sizing: border-box;
+  display: flex;
+  gap: 1.5mm;
+  height: 30mm;
+  overflow: hidden;
+  padding: 1mm;
+  width: 40mm;
+  break-after: page;
+  page-break-after: always;
+}
+.thermal-label:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+.qr {
+  flex: 0 0 22mm;
+  height: 22mm;
+  width: 22mm;
+}
+.qr svg {
+  display: block;
+  height: 100%;
+  shape-rendering: crispEdges;
+  width: 100%;
+}
+.copy {
+  flex: 1;
+  min-width: 0;
+}
+.category {
+  font-size: 10pt;
+  font-weight: 700;
+  line-height: 1.05;
+  margin-bottom: 1.5mm;
+}
+.sku {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 6.5pt;
+  font-weight: 700;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+`;
+
 export type LabelHtmlOptions = {
   categoryCode: string;
   documentTitle: string;
@@ -252,6 +314,43 @@ export async function buildA4LabelHtml({
   }
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(documentTitle)}</title><style>${A4_PAGE_CSS}</style></head><body>${sheets.join("")}</body></html>`;
+}
+
+export async function buildLabelHtml(format: LabelFormat, options: LabelHtmlOptions) {
+  return format === "a4"
+    ? buildA4LabelHtml(options)
+    : buildThermalLabelHtml(options);
+}
+
+export async function buildThermalLabelHtml({
+  categoryCode,
+  documentTitle,
+  labels,
+  onProgress,
+}: LabelHtmlOptions) {
+  if (labels.length === 0) {
+    throw new Error("Select at least one label.");
+  }
+  if (labels.length > MAX_LABEL_JOB_SIZE) {
+    throw new Error(`A label job cannot exceed ${MAX_LABEL_JOB_SIZE} labels.`);
+  }
+
+  const renderedLabels: string[] = [];
+  const chunkSize = 25;
+  for (let index = 0; index < labels.length; index += 1) {
+    const label = labels[index];
+    const matrix = createQrMatrix(label.qrPayload);
+    renderedLabels.push(
+      `<div class="thermal-label"><div class="qr">${qrMatrixToInlineSvg(matrix, `QR code containing ${label.qrPayload}`)}</div><div class="copy"><div class="category">${escapeHtml(categoryCode)}</div><div class="sku">${escapeHtml(label.sku)}</div></div></div>`,
+    );
+    onProgress?.(index + 1, labels.length);
+
+    if ((index + 1) % chunkSize === 0 && index + 1 < labels.length) {
+      await yieldToEventLoop();
+    }
+  }
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(documentTitle)}</title><style>${THERMAL_PAGE_CSS}</style></head><body>${renderedLabels.join("")}</body></html>`;
 }
 
 function yieldToEventLoop() {

@@ -5,7 +5,9 @@ import {
   A4_LABELS_PER_PAGE,
   MAX_LABEL_JOB_SIZE,
   QR_QUIET_ZONE,
+  THERMAL_PAGE_CSS,
   buildA4LabelHtml,
+  buildThermalLabelHtml,
   createQrMatrix,
   escapeHtml,
   expandLabelCopies,
@@ -127,5 +129,34 @@ describe("A4 printable HTML", () => {
     expect(html).not.toContain("<script>unsafe</script>");
     expect(html).toContain('aria-label="QR code containing RSM:1:SKU:SHT&amp;1"');
     expect(progress.at(-1)).toBe(37);
+  });
+});
+
+describe("thermal printable HTML", () => {
+  it("defines exact 40 by 30 mm pages with zero page margin and 1 mm safety padding", () => {
+    expect(THERMAL_PAGE_CSS).toContain("size: 40mm 30mm;");
+    expect(THERMAL_PAGE_CSS).toContain("margin: 0;");
+    expect(THERMAL_PAGE_CSS).toContain("height: 30mm;");
+    expect(THERMAL_PAGE_CSS).toContain("width: 40mm;");
+    expect(THERMAL_PAGE_CSS).toContain("padding: 1mm;");
+  });
+
+  it("renders exactly one escaped label per page", async () => {
+    const labels = [
+      { qrPayload: "RSM:1:SKU:SHT-001", sku: "SHT-001", unitNumber: 1 },
+      { qrPayload: "RSM:1:SKU:SHT-002", sku: "SHT-002", unitNumber: 2 },
+      { qrPayload: "RSM:1:SKU:SHT-003", sku: "SHT-<003>", unitNumber: 3 },
+    ];
+
+    const html = await buildThermalLabelHtml({
+      categoryCode: "S&HT",
+      documentTitle: "Thermal <labels>",
+      labels,
+    });
+
+    expect((html.match(/class="thermal-label"/g) ?? [])).toHaveLength(3);
+    expect(html).toContain("S&amp;HT");
+    expect(html).toContain("SHT-&lt;003&gt;");
+    expect(html).toContain(THERMAL_PAGE_CSS);
   });
 });

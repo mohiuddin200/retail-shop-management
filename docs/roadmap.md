@@ -13,7 +13,8 @@
 - Convex deployment, schema, authentication, shops, memberships, and roles
 - Owner-defined categories and bulk product intake - complete
 - Permanent unit SKU and versioned lookup payload generation - complete
-- Label preview and printing proof of concept for the target printer
+- Label preview, system printing, and native PDF implementation - complete
+- Physical A4 and 40 × 30 mm thermal print-and-scan proof - pending
 - Multi-item POS cart with cash or credit payment
 - Explicit business-day open/close flow
 - Resalable and damaged return handling

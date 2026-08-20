@@ -23,9 +23,16 @@ Last updated: 2026-08-20
 - [x] Create one permanent SKU and versioned QR payload per physical unit
 - [x] Add role-aware inventory summaries, batch browsing, and unit details
 - [x] Add automated inventory domain and Convex authorization tests
+- [x] Add owner/manager label ranges, one/two-copy jobs, and shared QR previews
+- [x] Add 48 × 30 mm A4 HTML printing through the system print dialog
+- [x] Add native PDF generation and sharing for label jobs
+- [x] Add one-page 40 × 30 mm thermal labels and bounded preview navigation
 
 ## Next
 
-- [ ] Generate QR images and build label preview and printing proof
+- [ ] Print A4 labels at 100%, measure 48 × 30 mm cells, and scan first/middle/last
+- [ ] Print thermal labels at 100%, measure 40 × 30 mm output, and scan first/middle/last
+- [ ] Record real printer, OS, driver, paper, scaling, dimensions, and results in docs/printing-proof.md
+- [ ] Mark the QR label phase complete only after both physical gates pass
 
 Update this checklist whenever a milestone is completed or the immediate priorities change.

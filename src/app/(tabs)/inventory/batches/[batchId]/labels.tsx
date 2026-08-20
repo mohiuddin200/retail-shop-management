@@ -18,15 +18,16 @@ import { ThemedText } from "@/components/themed-text";
 import { Colors, Radius, Spacing } from "@/constants/theme";
 import {
   labelActionError,
-  printA4LabelHtml,
-  shareA4LabelPdf,
+  printLabelHtml,
+  shareLabelPdf,
 } from "@/lib/label-platform";
 import {
   A4_LABELS_PER_PAGE,
-  buildA4LabelHtml,
+  buildLabelHtml,
   expandLabelCopies,
   labelPageCount,
   parseLabelRange,
+  type LabelFormat,
   type LabelUnit,
 } from "@/lib/label-printing";
 
@@ -37,6 +38,8 @@ export default function LabelPrintingScreen() {
   const [startValue, setStartValue] = useState("1");
   const [editedEndValue, setEditedEndValue] = useState<string | null>(null);
   const [copies, setCopies] = useState<1 | 2>(1);
+  const [format, setFormat] = useState<LabelFormat>("a4");
+  const [thermalPreviewIndex, setThermalPreviewIndex] = useState(0);
   const [activeAction, setActiveAction] = useState<"pdf" | "print" | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
   const endValue = editedEndValue ?? String(detail?.batch.quantity ?? "");
@@ -76,7 +79,7 @@ export default function LabelPrintingScreen() {
     setActiveAction(action);
     setGenerationProgress(0);
     try {
-      const html = await buildA4LabelHtml({
+      const html = await buildLabelHtml(format, {
         categoryCode: labelData.category.code,
         documentTitle: `${labelData.shop.name} batch ${labelData.batch.batchNumber} labels`,
         labels: jobLabels,
@@ -85,9 +88,9 @@ export default function LabelPrintingScreen() {
       });
 
       if (action === "print") {
-        await printA4LabelHtml(html);
+        await printLabelHtml(html, format);
       } else {
-        await shareA4LabelPdf(html);
+        await shareLabelPdf(html, format);
       }
     } catch (error) {
       Alert.alert(
@@ -110,7 +113,8 @@ export default function LabelPrintingScreen() {
 
   const selectedSkus = range?.count ?? 0;
   const totalLabels = selectedSkus * copies;
-  const totalPages = labelPageCount("a4", totalLabels);
+  const totalPages = labelPageCount(format, totalLabels);
+  const shownThermalIndex = Math.min(thermalPreviewIndex, Math.max(jobLabels.length - 1, 0));
 
   return (
     <AppScreen>
@@ -176,34 +180,96 @@ export default function LabelPrintingScreen() {
       </InventoryCard>
 
       <InventoryCard>
-        <ThemedText type="subtitle">3. Review job</ThemedText>
+        <ThemedText type="subtitle">3. Choose format</ThemedText>
+        <View style={styles.formatChoices}>
+          {([
+            {
+              description: "48 × 30 mm cells, 4 columns × 9 rows",
+              title: "A4 cut sheet",
+              value: "a4",
+            },
+            {
+              description: "One 40 × 30 mm label per page",
+              title: "Thermal roll",
+              value: "thermal",
+            },
+          ] as const).map((option) => (
+            <Pressable
+              accessibilityRole="radio"
+              accessibilityState={{ selected: format === option.value }}
+              key={option.value}
+              onPress={() => {
+                setFormat(option.value);
+                setThermalPreviewIndex(0);
+              }}
+              style={[
+                styles.formatChoice,
+                format === option.value && styles.choiceSelected,
+              ]}>
+              <ThemedText
+                style={format === option.value ? styles.choiceTextSelected : undefined}
+                type="smallBold">
+                {option.title}
+              </ThemedText>
+              <ThemedText
+                style={format === option.value ? styles.choiceTextSelected : undefined}
+                type="small">
+                {option.description}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
+      </InventoryCard>
+
+      <InventoryCard>
+        <ThemedText type="subtitle">4. Review job</ThemedText>
         <JobRow label="Selected SKUs" value={String(selectedSkus)} />
         <JobRow label="Copies per SKU" value={String(copies)} />
         <JobRow label="Total labels" value={String(totalLabels)} />
-        <JobRow label="Estimated A4 pages" value={String(totalPages)} />
+        <JobRow label="Estimated pages" value={String(totalPages)} />
         <ThemedText themeColor="textSecondary" type="small">
-          A4 uses 48 × 30 mm labels in a 4 × 9 grid. Printing does not update inventory.
+          {format === "a4"
+            ? "A4 uses 48 × 30 mm labels in a 4 × 9 grid."
+            : "Thermal uses one 40 × 30 mm label per page with a 1 mm safety margin."}{" "}
+          Printing does not update inventory.
         </ThemedText>
       </InventoryCard>
 
       <View style={styles.previewSection}>
         <View style={styles.previewHeading}>
-          <ThemedText type="subtitle">First A4 page preview</ThemedText>
+          <ThemedText type="subtitle">
+            {format === "a4" ? "First A4 page preview" : "Thermal label preview"}
+          </ThemedText>
           <ThemedText themeColor="textSecondary">
-            Up to 36 labels are rendered here. Remaining pages are generated only when printing.
+            {format === "a4"
+              ? "Up to 36 labels are rendered here. Remaining pages are generated only when printing."
+              : "Only one label is rendered at a time to keep large jobs responsive."}
           </ThemedText>
         </View>
         {!rangeError && labelData === undefined ? (
           <InventoryCard>
             <InventoryLoading />
           </InventoryCard>
-        ) : (
+        ) : format === "a4" ? (
           <A4Preview categoryCode={labelData?.category.code ?? ""} labels={previewLabels} />
+        ) : (
+          <ThermalPreview
+            categoryCode={labelData?.category.code ?? ""}
+            index={shownThermalIndex}
+            label={jobLabels[shownThermalIndex]}
+            onNext={() =>
+              setThermalPreviewIndex(
+                Math.min(shownThermalIndex + 1, Math.max(jobLabels.length - 1, 0)),
+              )
+            }
+            onPrevious={() => setThermalPreviewIndex(Math.max(shownThermalIndex - 1, 0))}
+            total={jobLabels.length}
+          />
         )}
       </View>
 
       <InventoryCard>
-        <ThemedText type="subtitle">4. Print or export</ThemedText>
+        <ThemedText type="subtitle">5. Print or export</ThemedText>
         {activeAction ? (
           <ThemedText accessibilityRole="alert" themeColor="textSecondary" type="small">
             {generationProgress < 100
@@ -283,6 +349,70 @@ function A4Preview({
   );
 }
 
+function ThermalPreview({
+  categoryCode,
+  index,
+  label,
+  onNext,
+  onPrevious,
+  total,
+}: {
+  categoryCode: string;
+  index: number;
+  label: LabelUnit | undefined;
+  onNext: () => void;
+  onPrevious: () => void;
+  total: number;
+}) {
+  return (
+    <View style={styles.thermalPreviewArea}>
+      <View accessibilityLabel="40 by 30 millimetre thermal label preview" style={styles.thermalLabel}>
+        {label ? (
+          <>
+            <View style={styles.thermalQr}>
+              <QrCodeSvg height="100%" payload={label.qrPayload} width="100%" />
+            </View>
+            <View style={styles.thermalCopy}>
+              <ThemedText style={styles.thermalCategory} type="smallBold">
+                {categoryCode}
+              </ThemedText>
+              <ThemedText style={styles.thermalSku} type="code">
+                {label.sku}
+              </ThemedText>
+            </View>
+          </>
+        ) : null}
+      </View>
+      <View style={styles.thermalControls}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={index === 0 || total === 0}
+          onPress={onPrevious}
+          style={[styles.navButton, (index === 0 || total === 0) && styles.navButtonDisabled]}>
+          <ThemedText style={styles.navButtonText} type="smallBold">
+            Previous
+          </ThemedText>
+        </Pressable>
+        <ThemedText type="smallBold">
+          Label {total === 0 ? 0 : index + 1} of {total}
+        </ThemedText>
+        <Pressable
+          accessibilityRole="button"
+          disabled={total === 0 || index >= total - 1}
+          onPress={onNext}
+          style={[
+            styles.navButton,
+            (total === 0 || index >= total - 1) && styles.navButtonDisabled,
+          ]}>
+          <ThemedText style={styles.navButtonText} type="smallBold">
+            Next
+          </ThemedText>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   twoColumns: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.three },
   column: { flexBasis: 180, flexGrow: 1 },
@@ -333,4 +463,47 @@ const styles = StyleSheet.create({
   previewCopy: { flex: 1, gap: 2, paddingLeft: "2%" },
   previewCategory: { color: "#000000", fontSize: 12, lineHeight: 14 },
   previewSku: { color: "#000000", fontSize: 8, lineHeight: 10 },
+  formatChoices: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.three },
+  formatChoice: {
+    borderColor: Colors.light.border,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    flexBasis: 240,
+    flexGrow: 1,
+    gap: Spacing.one,
+    padding: Spacing.three,
+  },
+  thermalPreviewArea: { alignItems: "center", gap: Spacing.three },
+  thermalLabel: {
+    alignItems: "center",
+    aspectRatio: 40 / 30,
+    backgroundColor: "#FFFFFF",
+    borderColor: Colors.light.border,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: Spacing.three,
+    maxWidth: 440,
+    padding: Spacing.three,
+    width: "100%",
+  },
+  thermalQr: { aspectRatio: 1, width: "56%" },
+  thermalCopy: { flex: 1, gap: Spacing.two },
+  thermalCategory: { color: "#000000", fontSize: 28, lineHeight: 32 },
+  thermalSku: { color: "#000000", fontSize: 13, lineHeight: 17 },
+  thermalControls: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.three,
+    justifyContent: "center",
+  },
+  navButton: {
+    borderColor: Colors.light.primary,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  navButtonDisabled: { opacity: 0.4 },
+  navButtonText: { color: Colors.light.primary },
 });

@@ -39,6 +39,20 @@ Financial reports are deterministic projections over immutable transactions and 
 
 Category codes are confirmed by the owner and contain 2-4 uppercase letters or numbers. Unit SKUs use `CODE-YYYYMMDD-BATCH-UNIT`, with a minimum four-digit batch number and three-digit unit number. Codes become immutable once a category has stock.
 
-Each intake is one atomic, idempotent Convex mutation. It creates an immutable batch plus one inventory-unit record per physical item, with quantity limited to 500. Every unit keeps its original buying cost in integer minor units. The QR payload contract is `RSM:1:SKU:<sku>` and never contains cost. QR image rendering and label printing are a separate delivery milestone.
+Each intake is one atomic, idempotent Convex mutation. It creates an immutable batch plus one inventory-unit record per physical item, with quantity limited to 500. Every unit keeps its original buying cost in integer minor units. The QR payload contract is `RSM:1:SKU:<sku>` and never contains cost.
 
 Inventory access is limited to active owners and managers. Only owners manage category lifecycle; managers can view costs and add stock. Cashiers cannot query inventory or open its routes.
+
+## Label preview and printing
+
+The label-data query is read-only, shop-scoped, and restricted to active owners and managers. It accepts an inclusive unit range and returns only shop/category/batch context plus ordered unit numbers, SKUs, and QR payloads. Buying costs never enter the label response or printable document.
+
+One QR matrix generator uses error-correction level M and a four-module quiet zone. Both the React Native SVG preview and printable inline SVG consume that matrix, so they encode identical data.
+
+A4 output uses a 210 × 297 mm page with 9 mm horizontal margins and 13.5 mm vertical margins. Its 192 × 270 mm content area is a 4 × 9 grid of 48 × 30 mm cut cells. Thermal output uses a 40 × 30 mm page with zero page margin and a 1 mm internal safety margin.
+
+Large jobs are expanded with consecutive copies per SKU and rendered to HTML in asynchronous chunks. The UI limits A4 preview to the first 36 labels and thermal preview to one label at a time.
+
+Android and iOS send supplied HTML to Expo Print and can generate a PDF for Expo Sharing. Web uses an isolated temporary iframe because Expo Print on web prints the current document instead of supplied HTML. Printer connectivity, media selection, and scaling remain system-dialog and driver responsibilities.
+
+Printing never records a print event or changes an inventory unit. Physical acceptance remains open until the A4 and thermal measurements and first/middle/last scan results are recorded in docs/printing-proof.md.
