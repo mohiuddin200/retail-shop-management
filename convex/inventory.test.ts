@@ -49,6 +49,45 @@ async function seedMembership(role: "cashier" | "manager" | "owner") {
   };
 }
 
+async function seedBatch(
+  seeded: Awaited<ReturnType<typeof seedMembership>>,
+  quantity = 5,
+) {
+  return seeded.t.run(async (ctx) => {
+    const now = Date.now();
+    const batchId = await ctx.db.insert("productBatches", {
+      batchNumber: 1,
+      buyingPriceMinor: 30000,
+      categoryId: seeded.categoryId,
+      createdAt: now,
+      createdBy: seeded.userId,
+      intakeDate: "2026-08-20",
+      quantity,
+      requestKey: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      shopId: seeded.shopId,
+    });
+
+    for (let unitNumber = quantity; unitNumber >= 1; unitNumber -= 1) {
+      const sku = buildSku("SHT", "2026-08-20", 1, unitNumber);
+      await ctx.db.insert("inventoryUnits", {
+        batchId,
+        buyingPriceMinor: 30000,
+        categoryId: seeded.categoryId,
+        createdAt: now,
+        createdBy: seeded.userId,
+        qrPayload: `RSM:1:SKU:${sku}`,
+        shopId: seeded.shopId,
+        sku,
+        status: "in_stock",
+        updatedAt: now,
+      });
+    }
+
+    return batchId;
+  });
+}
+
+
 describe("inventory identity", () => {
   it("builds permanent, padded SKUs", () => {
     expect(buildSku("SHT", "2026-08-20", 1, 14)).toBe("SHT-20260820-0001-014");
@@ -146,5 +185,104 @@ describe("inventory intake", () => {
         requestKey: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("inventory label data", () => {
+  it.each(["owner", "manager"] as const)(
+    "allows an active %s and returns ordered, cost-free label records",
+    async (role) => {
+      const seeded = await seedMembership(role);
+      const batchId = await seedBatch(seeded);
+
+      const result = await seeded.client.query(api.inventory.getLabelData, {
+        batchId,
+        endUnit: 5,
+        startUnit: 1,
+      });
+
+      expect(result.shop).toEqual({ name: "Test Shop" });
+      expect(result.category).toEqual({ code: "SHT", name: "Shirts" });
+      expect(result.units.map((unit) => unit.unitNumber)).toEqual([1, 2, 3, 4, 5]);
+      expect(result.units[0]).toEqual({
+        qrPayload: "RSM:1:SKU:SHT-20260820-0001-001",
+        sku: "SHT-20260820-0001-001",
+        unitNumber: 1,
+      });
+      expect(result.units[2].sku).toBe("SHT-20260820-0001-003");
+      expect(result.units[4].qrPayload).toBe(
+        "RSM:1:SKU:SHT-20260820-0001-005",
+      );
+      expect(JSON.stringify(result)).not.toContain("buyingPrice");
+    },
+  );
+
+  it("blocks cashiers and another shop's batch", async () => {
+    const cashier = await seedMembership("cashier");
+    const cashierBatchId = await seedBatch(cashier);
+    await expect(
+      cashier.client.query(api.inventory.getLabelData, {
+        batchId: cashierBatchId,
+        endUnit: 1,
+        startUnit: 1,
+      }),
+    ).rejects.toThrow();
+
+    const owner = await seedMembership("owner");
+    const foreignBatchId = await owner.t.run(async (ctx) => {
+      const now = Date.now();
+      const foreignUserId = await ctx.db.insert("users", {});
+      const foreignShopId = await ctx.db.insert("shops", {
+        createdAt: now,
+        createdBy: foreignUserId,
+        currencyCode: "BDT",
+        name: "Other Shop",
+        timezone: "Asia/Dhaka",
+        updatedAt: now,
+      });
+      const foreignCategoryId = await ctx.db.insert("categories", {
+        code: "FOR",
+        createdAt: now,
+        createdBy: foreignUserId,
+        name: "Foreign",
+        shopId: foreignShopId,
+        updatedAt: now,
+      });
+      return ctx.db.insert("productBatches", {
+        batchNumber: 1,
+        buyingPriceMinor: 100,
+        categoryId: foreignCategoryId,
+        createdAt: now,
+        createdBy: foreignUserId,
+        intakeDate: "2026-08-20",
+        quantity: 1,
+        requestKey: "99999999-9999-4999-8999-999999999999",
+        shopId: foreignShopId,
+      });
+    });
+
+    await expect(
+      owner.client.query(api.inventory.getLabelData, {
+        batchId: foreignBatchId,
+        endUnit: 1,
+        startUnit: 1,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects non-integer, reversed, and out-of-batch ranges", async () => {
+    const owner = await seedMembership("owner");
+    const batchId = await seedBatch(owner);
+
+    for (const range of [
+      { startUnit: 1.5, endUnit: 2 },
+      { startUnit: 4, endUnit: 3 },
+      { startUnit: 0, endUnit: 2 },
+      { startUnit: 1, endUnit: 6 },
+    ]) {
+      await expect(
+        owner.client.query(api.inventory.getLabelData, { batchId, ...range }),
+      ).rejects.toThrow();
+    }
   });
 });

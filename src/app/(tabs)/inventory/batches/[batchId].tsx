@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { StyleSheet, View } from "react-native";
 
@@ -50,6 +50,13 @@ export default function BatchDetailsScreen() {
         <DetailRow label="Total buying cost" value={formatMoney(batch.buyingPriceMinor * batch.quantity, shopContext.shop.currencyCode)} />
         <DetailRow label="Supplier/reference" value={batch.supplierReference ?? "Not recorded"} />
         <DetailRow label="Notes" value={batch.notes ?? "Not recorded"} />
+        <InventoryButton
+          icon="printer-outline"
+          label="Print labels"
+          onPress={() =>
+            router.push({ pathname: "/inventory/batches/[batchId]/labels", params: { batchId } })
+          }
+        />
       </InventoryCard>
 
       <View style={styles.section}>

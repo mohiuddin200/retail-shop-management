@@ -16,6 +16,7 @@ export default function InventoryLayout() {
       <Stack.Screen name="categories" options={{ title: "Categories" }} />
       <Stack.Screen name="intake" options={{ title: "Add stock" }} />
       <Stack.Screen name="batches/[batchId]" options={{ title: "Batch details" }} />
+      <Stack.Screen name="batches/[batchId]/labels" options={{ title: "Print labels" }} />
     </Stack>
   );
 }

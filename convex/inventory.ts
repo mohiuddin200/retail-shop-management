@@ -66,6 +66,64 @@ export const getBatch = query({
   },
 });
 
+export const getLabelData = query({
+  args: {
+    batchId: v.id("productBatches"),
+    endUnit: v.number(),
+    startUnit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const { shop } = await requireActiveShop(ctx, inventoryRoles);
+    const batch = await ctx.db.get(args.batchId);
+    if (!batch || batch.shopId !== shop._id) {
+      throw new ConvexError("Batch not found.");
+    }
+
+    assertLabelRange(args.startUnit, args.endUnit, batch.quantity);
+
+    const category = await ctx.db.get(batch.categoryId);
+    if (!category || category.shopId !== shop._id) {
+      throw new ConvexError("Category data is incomplete.");
+    }
+
+    const batchUnits = await ctx.db
+      .query("inventoryUnits")
+      .withIndex("by_batch", (q) => q.eq("batchId", batch._id))
+      .collect();
+    const units = batchUnits
+      .map((unit) => ({
+        qrPayload: unit.qrPayload,
+        sku: unit.sku,
+        unitNumber: unitNumberFromSku(unit.sku),
+      }))
+      .sort((left, right) => left.unitNumber - right.unitNumber)
+      .filter(
+        (unit) => unit.unitNumber >= args.startUnit && unit.unitNumber <= args.endUnit,
+      );
+
+    if (units.length !== args.endUnit - args.startUnit + 1) {
+      throw new ConvexError("The batch unit data is incomplete.");
+    }
+
+    return {
+      batch: {
+        batchId: batch._id,
+        batchNumber: batch.batchNumber,
+        intakeDate: batch.intakeDate,
+        quantity: batch.quantity,
+      },
+      category: {
+        code: category.code,
+        name: category.name,
+      },
+      shop: {
+        name: shop.name,
+      },
+      units,
+    };
+  },
+});
+
 export const listBatchUnits = query({
   args: { batchId: v.id("productBatches"), paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
@@ -177,6 +235,27 @@ export function buildSku(
   unitNumber: number,
 ) {
   return `${code}-${intakeDate.replaceAll("-", "")}-${String(batchNumber).padStart(4, "0")}-${String(unitNumber).padStart(3, "0")}`;
+}
+
+function assertLabelRange(startUnit: number, endUnit: number, quantity: number) {
+  if (!Number.isSafeInteger(startUnit) || !Number.isSafeInteger(endUnit)) {
+    throw new ConvexError("Unit range values must be whole numbers.");
+  }
+  if (startUnit < 1 || endUnit > quantity) {
+    throw new ConvexError(`Unit range must stay between 1 and ${quantity}.`);
+  }
+  if (startUnit > endUnit) {
+    throw new ConvexError("Start unit cannot be after end unit.");
+  }
+}
+
+function unitNumberFromSku(sku: string) {
+  const match = sku.match(/-(\d+)$/);
+  const unitNumber = Number(match?.[1]);
+  if (!Number.isSafeInteger(unitNumber) || unitNumber < 1) {
+    throw new ConvexError("The batch unit data is incomplete.");
+  }
+  return unitNumber;
 }
 
 function batchResult(batch: Doc<"productBatches">, category: Doc<"categories"> | null) {
