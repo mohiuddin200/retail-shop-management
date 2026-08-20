@@ -11,8 +11,8 @@
 ## Phase 1 — core shop operation
 
 - Convex deployment, schema, authentication, shops, memberships, and roles
-- Owner-defined categories and bulk product intake
-- Permanent unit SKU and QR generation
+- Owner-defined categories and bulk product intake - complete
+- Permanent unit SKU and versioned lookup payload generation - complete
 - Label preview and printing proof of concept for the target printer
 - Multi-item POS cart with cash or credit payment
 - Explicit business-day open/close flow
@@ -40,6 +40,6 @@
 - Target platforms and minimum Android/iOS versions
 - Phone camera versus dedicated scanner
 - Printer model, connection type, label dimensions, and A4 requirements
-- SKU convention and printed cost-cipher requirement
+- Printed cost-cipher requirement; SKU format is locked as `CODE-YYYYMMDD-BATCH-UNIT` and QR payload as `RSM:1:SKU:<sku>`
 - Single shop versus multiple branches
 - Currency, tax, and damaged-stock accounting rules

@@ -1,11 +1,13 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
-import type { ComponentProps } from 'react';
-import type { ColorValue } from 'react-native';
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import { useQuery } from "convex/react";
+import type { ComponentProps } from "react";
+import type { ColorValue } from "react-native";
 
-import { Colors } from '@/constants/theme';
+import { api } from "@/../convex/_generated/api";
+import { Colors } from "@/constants/theme";
 
-type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
+type IconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 function TabIcon({ color, name }: { color: ColorValue; name: IconName }) {
   return <MaterialCommunityIcons color={color} name={name} size={24} />;
@@ -13,6 +15,10 @@ function TabIcon({ color, name }: { color: ColorValue; name: IconName }) {
 
 export default function TabLayout() {
   const colors = Colors.light;
+  const shopContext = useQuery(api.shops.getCurrentForUser);
+  const canAccessInventory =
+    shopContext?.membership.status === "active" &&
+    shopContext.membership.role !== "cashier";
 
   return (
     <Tabs
@@ -28,28 +34,30 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Overview',
+          title: "Overview",
           tabBarIcon: ({ color }) => <TabIcon color={color} name="view-dashboard-outline" />,
         }}
       />
       <Tabs.Screen
         name="pos"
         options={{
-          title: 'POS',
+          title: "POS",
           tabBarIcon: ({ color }) => <TabIcon color={color} name="qrcode-scan" />,
         }}
       />
-      <Tabs.Screen
-        name="inventory"
-        options={{
-          title: 'Inventory',
-          tabBarIcon: ({ color }) => <TabIcon color={color} name="package-variant-closed" />,
-        }}
-      />
+      <Tabs.Protected guard={canAccessInventory}>
+        <Tabs.Screen
+          name="inventory"
+          options={{
+            title: "Inventory",
+            tabBarIcon: ({ color }) => <TabIcon color={color} name="package-variant-closed" />,
+          }}
+        />
+      </Tabs.Protected>
       <Tabs.Screen
         name="more"
         options={{
-          title: 'More',
+          title: "More",
           tabBarIcon: ({ color }) => <TabIcon color={color} name="dots-grid" />,
         }}
       />

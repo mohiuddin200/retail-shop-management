@@ -34,3 +34,11 @@ Roles are modeled as shop memberships: owner, manager, and cashier. Permissions 
 ## Reporting
 
 Financial reports are deterministic projections over immutable transactions and adjustments. Any future AI insight layer may explain anomalies but cannot calculate or overwrite accounting totals.
+
+## Inventory identity and intake
+
+Category codes are confirmed by the owner and contain 2-4 uppercase letters or numbers. Unit SKUs use `CODE-YYYYMMDD-BATCH-UNIT`, with a minimum four-digit batch number and three-digit unit number. Codes become immutable once a category has stock.
+
+Each intake is one atomic, idempotent Convex mutation. It creates an immutable batch plus one inventory-unit record per physical item, with quantity limited to 500. Every unit keeps its original buying cost in integer minor units. The QR payload contract is `RSM:1:SKU:<sku>` and never contains cost. QR image rendering and label printing are a separate delivery milestone.
+
+Inventory access is limited to active owners and managers. Only owners manage category lifecycle; managers can view costs and add stock. Cashiers cannot query inventory or open its routes.

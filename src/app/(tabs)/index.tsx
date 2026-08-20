@@ -17,6 +17,7 @@ export default function OverviewScreen() {
 
   const { membership, shop } = shopContext;
   const roleLabel = formatRole(membership.role);
+  const isCashier = membership.role === 'cashier';
 
   return (
     <AppScreen>
@@ -36,8 +37,9 @@ export default function OverviewScreen() {
             {shop.name}
           </ThemedText>
           <ThemedText themeColor="textSecondary">
-            Your shop foundation is ready. Start by organizing categories and entering opening
-            stock.
+            {isCashier
+              ? 'Your workspace is ready for customer sales and daily operations.'
+              : 'Your shop foundation is ready. Organize categories and enter opening stock.'}
           </ThemedText>
         </View>
       </View>
@@ -85,16 +87,16 @@ export default function OverviewScreen() {
           />
           <View style={styles.divider} />
           <ReadinessRow
-            description="Define categories and enter opening stock."
-            icon="arrow-right-circle"
-            status="Next"
+            description={isCashier ? "Owners and managers maintain stock and buying costs." : "Define categories and enter opening stock."}
+            icon={isCashier ? "lock-outline" : "arrow-right-circle"}
+            status={isCashier ? "Restricted" : "Next"}
             title="Inventory foundation"
           />
           <View style={styles.divider} />
           <ReadinessRow
-            description="Begin recording sales after inventory exists."
-            icon="clock-outline"
-            status="After inventory"
+            description={isCashier ? "Scan products and build the customer cart." : "Begin recording sales after inventory exists."}
+            icon={isCashier ? "arrow-right-circle" : "clock-outline"}
+            status={isCashier ? "Next" : "After inventory"}
             title="Point of sale"
           />
         </View>
@@ -110,20 +112,23 @@ export default function OverviewScreen() {
         </View>
 
         <View style={styles.actions}>
+          {!isCashier ? (
+            <DashboardActionCard
+              description="Create categories, add stock, and review permanent unit SKUs."
+              emphasis
+              href="/inventory"
+              icon="package-variant-closed"
+              status="Ready"
+              title="Manage inventory"
+            />
+          ) : null}
           <DashboardActionCard
-            description="Create categories and prepare the stock intake workflow."
-            emphasis
-            href="/inventory"
-            icon="package-variant-closed"
-            status="Next"
-            title="Set up categories and stock"
-          />
-          <DashboardActionCard
-            description="Review how scanning and multi-item sales will work."
+            description={isCashier ? "Start the customer sales workflow." : "Review how scanning and multi-item sales will work."}
+            emphasis={isCashier}
             href="/pos"
             icon="qrcode-scan"
-            status="Preview"
-            title="Preview the sales workflow"
+            status={isCashier ? "Next" : "Preview"}
+            title={isCashier ? "Open point of sale" : "Preview the sales workflow"}
           />
           <DashboardActionCard
             description="Open account controls and see the later operational modules."

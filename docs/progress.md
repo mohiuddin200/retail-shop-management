@@ -1,6 +1,6 @@
 # Project progress
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 ## Completed
 
@@ -18,9 +18,14 @@ Last updated: 2026-08-19
 - [x] Add protected navigation for authenticated users
 - [x] Build initial shop creation and owner onboarding
 - [x] Connect the dashboard to the authenticated shop
+- [x] Add owner-managed inventory categories with permanent SKU codes
+- [x] Add idempotent bulk stock intake with immutable batch costs
+- [x] Create one permanent SKU and versioned QR payload per physical unit
+- [x] Add role-aware inventory summaries, batch browsing, and unit details
+- [x] Add automated inventory domain and Convex authorization tests
 
 ## Next
 
-- [ ] Start product and inventory management
+- [ ] Generate QR images and build label preview and printing proof
 
 Update this checklist whenever a milestone is completed or the immediate priorities change.

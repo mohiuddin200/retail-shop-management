@@ -14,6 +14,13 @@ const membershipStatus = v.union(
   v.literal("disabled"),
 );
 
+const inventoryUnitStatus = v.union(
+  v.literal("in_stock"),
+  v.literal("sold"),
+  v.literal("refunded"),
+  v.literal("damaged"),
+);
+
 export default defineSchema({
   ...authTables,
   shops: defineTable({
@@ -47,4 +54,37 @@ export default defineSchema({
   })
     .index("by_shop", ["shopId"])
     .index("by_shop_and_code", ["shopId", "code"]),
+  productBatches: defineTable({
+    shopId: v.id("shops"),
+    batchNumber: v.number(),
+    categoryId: v.id("categories"),
+    buyingPriceMinor: v.number(),
+    quantity: v.number(),
+    intakeDate: v.string(),
+    supplierReference: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    requestKey: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_shop", ["shopId"])
+    .index("by_category", ["categoryId"])
+    .index("by_shop_and_batch_number", ["shopId", "batchNumber"])
+    .index("by_shop_and_request_key", ["shopId", "requestKey"]),
+  inventoryUnits: defineTable({
+    shopId: v.id("shops"),
+    batchId: v.id("productBatches"),
+    categoryId: v.id("categories"),
+    sku: v.string(),
+    buyingPriceMinor: v.number(),
+    status: inventoryUnitStatus,
+    qrPayload: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_shop_and_sku", ["shopId", "sku"])
+    .index("by_shop_and_status", ["shopId", "status"])
+    .index("by_batch", ["batchId"])
+    .index("by_category_and_status", ["categoryId", "status"]),
 });
