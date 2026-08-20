@@ -15,6 +15,7 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import { Colors, Radius, Spacing } from "@/constants/theme";
 import { formatMoney } from "@/lib/inventory-domain";
+import { inventoryRoutes } from "@/lib/inventory-routes";
 
 export default function InventoryHomeScreen() {
   const shopContext = useQuery(api.shops.getCurrentForUser);
@@ -62,7 +63,7 @@ export default function InventoryHomeScreen() {
       </View>
 
       <View style={styles.actions}>
-        <Link asChild href="./intake">
+        <Link asChild href={inventoryRoutes.intake}>
           <Pressable style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
             <View style={styles.actionIcon}>
               <MaterialCommunityIcons color={Colors.light.surface} name="package-variant-plus" size={24} />
@@ -77,7 +78,7 @@ export default function InventoryHomeScreen() {
           </Pressable>
         </Link>
 
-        <Link asChild href="./categories">
+        <Link asChild href={inventoryRoutes.categories}>
           <Pressable style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
             <View style={[styles.actionIcon, styles.actionIconSecondary]}>
               <MaterialCommunityIcons color={Colors.light.primary} name="shape-outline" size={24} />
@@ -113,7 +114,7 @@ export default function InventoryHomeScreen() {
               <View key={batch._id}>
                 {index > 0 ? <View style={styles.divider} /> : null}
                 <Link
-                  href={{ pathname: "./batches/[batchId]", params: { batchId: batch._id } }}
+                  href={inventoryRoutes.batchDetails(batch._id)}
                   asChild>
                   <Pressable style={({ pressed }) => [styles.batch, pressed && styles.pressed]}>
                     <View style={styles.batchCopy}>

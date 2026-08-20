@@ -15,8 +15,8 @@
 - Permanent unit SKU and versioned lookup payload generation - complete
 - Label preview, system printing, and native PDF implementation - complete
 - Physical A4 and 40 × 30 mm thermal print-and-scan proof - pending
-- Multi-item POS cart with cash or credit payment
-- Explicit business-day open/close flow
+- Multi-item POS cart with QR/manual entry and cash payment - implementation complete; real-device acceptance pending
+- Explicit business-day open/close flow - implementation complete; authenticated acceptance pending
 - Resalable and damaged return handling
 - Daily sales report
 

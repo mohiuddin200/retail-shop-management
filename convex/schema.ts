@@ -21,6 +21,8 @@ const inventoryUnitStatus = v.union(
   v.literal("damaged"),
 );
 
+const businessDayStatus = v.union(v.literal("open"), v.literal("closed"));
+
 export default defineSchema({
   ...authTables,
   shops: defineTable({
@@ -87,4 +89,67 @@ export default defineSchema({
     .index("by_shop_and_status", ["shopId", "status"])
     .index("by_batch", ["batchId"])
     .index("by_category_and_status", ["categoryId", "status"]),
+  businessDays: defineTable({
+    shopId: v.id("shops"),
+    dayNumber: v.number(),
+    status: businessDayStatus,
+    openedAt: v.number(),
+    openedBy: v.id("users"),
+    closedAt: v.optional(v.number()),
+    closedBy: v.optional(v.id("users")),
+    closeRequestKey: v.optional(v.string()),
+    saleCount: v.number(),
+    unitCount: v.number(),
+    grossSalesMinor: v.number(),
+    cashCollectedMinor: v.number(),
+    costOfGoodsMinor: v.number(),
+    grossProfitMinor: v.number(),
+  })
+    .index("by_shop_and_status", ["shopId", "status"])
+    .index("by_shop_and_day_number", ["shopId", "dayNumber"])
+    .index("by_shop_and_close_request_key", ["shopId", "closeRequestKey"]),
+  sales: defineTable({
+    shopId: v.id("shops"),
+    businessDayId: v.id("businessDays"),
+    saleNumber: v.number(),
+    paymentType: v.literal("cash"),
+    unitCount: v.number(),
+    totalMinor: v.number(),
+    costOfGoodsMinor: v.number(),
+    grossProfitMinor: v.number(),
+    requestKey: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_shop", ["shopId"])
+    .index("by_business_day", ["businessDayId"])
+    .index("by_shop_and_sale_number", ["shopId", "saleNumber"])
+    .index("by_shop_and_request_key", ["shopId", "requestKey"]),
+  saleItems: defineTable({
+    shopId: v.id("shops"),
+    saleId: v.id("sales"),
+    businessDayId: v.id("businessDays"),
+    inventoryUnitId: v.id("inventoryUnits"),
+    categoryId: v.id("categories"),
+    sku: v.string(),
+    buyingPriceMinor: v.number(),
+    sellingPriceMinor: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_sale", ["saleId"])
+    .index("by_inventory_unit", ["inventoryUnitId"])
+    .index("by_business_day", ["businessDayId"]),
+  payments: defineTable({
+    shopId: v.id("shops"),
+    saleId: v.id("sales"),
+    businessDayId: v.id("businessDays"),
+    method: v.literal("cash"),
+    amountMinor: v.number(),
+    tenderedMinor: v.number(),
+    changeMinor: v.number(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_sale", ["saleId"])
+    .index("by_business_day", ["businessDayId"]),
 });

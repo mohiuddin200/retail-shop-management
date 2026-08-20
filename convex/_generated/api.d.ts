@@ -14,6 +14,7 @@ import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as inventory from "../inventory.js";
 import type * as lib_authorization from "../lib/authorization.js";
+import type * as pos from "../pos.js";
 import type * as shops from "../shops.js";
 import type * as users from "../users.js";
 
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   inventory: typeof inventory;
   "lib/authorization": typeof lib_authorization;
+  pos: typeof pos;
   shops: typeof shops;
   users: typeof users;
 }>;

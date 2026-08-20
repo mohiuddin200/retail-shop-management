@@ -23,6 +23,7 @@ import {
   parseMoneyToMinor,
   validateIntakeDate,
 } from "@/lib/inventory-domain";
+import { getEmptyIntakeAction, inventoryRoutes } from "@/lib/inventory-routes";
 
 export default function IntakeScreen() {
   const shopContext = useQuery(api.shops.getCurrentForUser);
@@ -41,6 +42,7 @@ export default function IntakeScreen() {
     return <AppScreen><InventoryLoading /></AppScreen>;
   }
 
+  const emptyIntakeAction = getEmptyIntakeAction(shopContext.membership.role);
   const today = dateInTimeZone(new Date(), shopContext.shop.timezone);
   const shownDate = intakeDate || today;
   const selectedCategory = categories.find((category) => category._id === categoryId);
@@ -77,7 +79,7 @@ export default function IntakeScreen() {
       Alert.alert(
         "Stock added",
         `${result.quantity} units created. SKUs run from ${result.firstSku} to ${result.lastSku}.`,
-        [{ text: "View batch", onPress: () => router.replace({ pathname: "./batches/[batchId]", params: { batchId: result.batchId } }) }],
+        [{ text: "View batch", onPress: () => router.replace(inventoryRoutes.batchDetails(result.batchId)) }],
       );
     } catch (error) {
       Alert.alert("Stock not added", error instanceof Error ? error.message : "Try again.");
@@ -100,6 +102,13 @@ export default function IntakeScreen() {
             icon="shape-plus-outline"
             title="Create a category first"
           />
+          {emptyIntakeAction ? (
+            <InventoryButton
+              icon="shape-plus-outline"
+              label={emptyIntakeAction.label}
+              onPress={() => router.push(emptyIntakeAction.href)}
+            />
+          ) : null}
         </InventoryCard>
       ) : (
         <>

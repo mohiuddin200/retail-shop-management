@@ -56,3 +56,11 @@ Large jobs are expanded with consecutive copies per SKU and rendered to HTML in 
 Android and iOS send supplied HTML to Expo Print and can generate a PDF for Expo Sharing. Web uses an isolated temporary iframe because Expo Print on web prints the current document instead of supplied HTML. Printer connectivity, media selection, and scaling remain system-dialog and driver responsibilities.
 
 Printing never records a print event or changes an inventory unit. Physical acceptance remains open until the A4 and thermal measurements and first/middle/last scan results are recorded in docs/printing-proof.md.
+
+## Point of sale and business days
+
+Every active owner, manager, or cashier can resolve a stored `RSM:1:SKU:<sku>` payload or raw SKU through a shop-scoped POS query. The response contains only unit identity and category display data; buying cost remains server-only.
+
+Cash checkout is one idempotent Convex mutation. It revalidates 1–50 unique in-stock units, snapshots their original buying costs and negotiated selling prices, creates the immutable sale/items/payment records, updates running business-day totals, and marks the units sold atomically. The client retains its request key and cart until the server acknowledges the sale.
+
+The first successful sale opens business day 1 automatically. Owners and managers can explicitly close a nonempty day; closing freezes its totals and immediately opens the next numbered day. Cashiers can view safe sales totals but cannot close a day or receive cost/profit data. Credit sales, offline outbox behavior, returns, and historical adjustments remain later milestones.

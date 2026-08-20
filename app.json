@@ -34,7 +34,15 @@
         }
       ],
       "expo-secure-store",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "barcodeScannerEnabled": true,
+          "cameraPermission": "Allow Retail Shop Manager to scan product QR codes.",
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

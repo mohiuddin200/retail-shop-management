@@ -27,12 +27,23 @@ Last updated: 2026-08-20
 - [x] Add 48 × 30 mm A4 HTML printing through the system print dialog
 - [x] Add native PDF generation and sharing for label jobs
 - [x] Add one-page 40 × 30 mm thermal labels and bounded preview navigation
+- [x] Manually scan a generated QR code from the on-screen label preview
+- [x] Add camera and manual SKU lookup for every active POS role
+- [x] Add a multi-item cart with negotiated prices, cash tender, and change
+- [x] Complete cash sales atomically with immutable sale, item, and payment records
+- [x] Add retry-safe business-day creation and owner/manager End Day controls
 
 ## Next
 
+- [ ] Run authenticated real-device POS acceptance: scan QR, complete cash sale, verify change and sold-unit rejection, then close the day as owner/manager
+- [ ] Add resalable and damaged return handling
+- [ ] Add the finalized daily sales report
+- [ ] Add credit buyers, due balances, and repayments in Phase 2
+
+## Deferred
+
 - [ ] Print A4 labels at 100%, measure 48 × 30 mm cells, and scan first/middle/last
 - [ ] Print thermal labels at 100%, measure 40 × 30 mm output, and scan first/middle/last
-- [ ] Record real printer, OS, driver, paper, scaling, dimensions, and results in docs/printing-proof.md
-- [ ] Mark the QR label phase complete only after both physical gates pass
+- [ ] Record physical results in docs/printing-proof.md and close the QR label phase only after both formats pass
 
 Update this checklist whenever a milestone is completed or the immediate priorities change.
