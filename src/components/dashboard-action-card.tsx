@@ -35,35 +35,37 @@ export function DashboardActionCard({
           emphasis && styles.cardEmphasis,
           pressed && styles.cardPressed,
         ]}>
-        <View style={[styles.iconContainer, emphasis && styles.iconContainerEmphasis]}>
-          <MaterialCommunityIcons
-            color={emphasis ? Colors.light.surface : Colors.light.primary}
-            name={icon}
-            size={24}
-          />
+        <View style={styles.topRow}>
+          <View style={[styles.iconContainer, emphasis && styles.iconContainerEmphasis]}>
+            <MaterialCommunityIcons
+              color={emphasis ? Colors.light.surface : Colors.light.primary}
+              name={icon}
+              size={24}
+            />
+          </View>
+
+          <View style={[styles.statusPill, emphasis && styles.statusPillEmphasis]}>
+            <ThemedText
+              style={[styles.statusText, emphasis && styles.statusTextEmphasis]}
+              type="smallBold">
+              {status}
+            </ThemedText>
+          </View>
         </View>
 
         <View style={styles.content}>
-          <View style={styles.titleRow}>
-            <ThemedText type="smallBold">{title}</ThemedText>
-            <View style={[styles.statusPill, emphasis && styles.statusPillEmphasis]}>
-              <ThemedText
-                style={[styles.statusText, emphasis && styles.statusTextEmphasis]}
-                type="smallBold">
-                {status}
-              </ThemedText>
-            </View>
-          </View>
+          <ThemedText type="subtitle">{title}</ThemedText>
           <ThemedText style={styles.description} themeColor="textSecondary" type="small">
             {description}
           </ThemedText>
         </View>
 
-        <MaterialCommunityIcons
-          color={Colors.light.textSecondary}
-          name="chevron-right"
-          size={24}
-        />
+        <View style={styles.openRow}>
+          <ThemedText style={styles.openText} type="smallBold">
+            Open
+          </ThemedText>
+          <MaterialCommunityIcons color={Colors.light.primary} name="arrow-right" size={20} />
+        </View>
       </Pressable>
     </Link>
   );
@@ -71,13 +73,15 @@ export function DashboardActionCard({
 
 const styles = StyleSheet.create({
   card: {
-    alignItems: 'center',
     backgroundColor: Colors.light.surface,
     borderColor: Colors.light.border,
     borderRadius: Radius.large,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexBasis: 210,
+    flexGrow: 1,
     gap: Spacing.three,
+    justifyContent: 'space-between',
+    minHeight: 176,
     padding: Spacing.four,
   },
   cardEmphasis: {
@@ -85,6 +89,11 @@ const styles = StyleSheet.create({
   },
   cardPressed: {
     backgroundColor: Colors.light.primaryMuted,
+  },
+  topRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   iconContainer: {
     alignItems: 'center',
@@ -98,13 +107,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.primary,
   },
   content: {
-    flex: 1,
-    gap: Spacing.one,
-  },
-  titleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   statusPill: {
@@ -127,4 +129,10 @@ const styles = StyleSheet.create({
   description: {
     lineHeight: 20,
   },
+  openRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: Spacing.one,
+  },
+  openText: { color: Colors.light.primary },
 });

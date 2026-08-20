@@ -1,7 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Link } from "expo-router";
 import { useQuery } from "convex/react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { api } from "@/../convex/_generated/api";
 import { AppScreen } from "@/components/app-screen";
@@ -10,8 +9,6 @@ import { ThemedText } from "@/components/themed-text";
 import { Colors, Radius, Spacing } from "@/constants/theme";
 import { formatMoney } from "@/lib/inventory-domain";
 import { buildOverviewSnapshot } from "@/lib/overview-domain";
-
-const overviewImage = require("../../../assets/images/overview-retail-operations.png");
 
 export default function OverviewScreen() {
   const shopContext = useQuery(api.shops.getCurrentForUser);
@@ -45,74 +42,41 @@ export default function OverviewScreen() {
 
   return (
     <AppScreen>
-      <View style={styles.heroCard}>
-        <View style={styles.heroCopy}>
-          <View style={styles.eyebrow}>
-            <MaterialCommunityIcons
-              color={Colors.light.primary}
-              name="storefront-outline"
-              size={18}
-            />
-            <ThemedText style={styles.eyebrowText} type="smallBold">
-              {roleLabel.toUpperCase()} WORKSPACE
-            </ThemedText>
-          </View>
-
+      <View style={styles.pageHeader}>
+        <View style={styles.headerRow}>
           <View style={styles.heading}>
-            <ThemedText themeColor="textSecondary" type="smallBold">
-              WELCOME BACK
-            </ThemedText>
+            <View style={styles.eyebrow}>
+              <MaterialCommunityIcons
+                color={Colors.light.primary}
+                name="storefront-outline"
+                size={18}
+              />
+              <ThemedText style={styles.eyebrowText} type="smallBold">
+                OVERVIEW
+              </ThemedText>
+            </View>
             <ThemedText style={styles.title} type="title">
               {shop.name}
             </ThemedText>
             <ThemedText themeColor="textSecondary">
               {isCashier
-                ? "Scan products, complete cash sales, and process customer returns from one workspace."
-                : "Monitor the current business day, manage stock, and keep every sale and return connected to permanent inventory."}
+                ? "Your sales workspace and current business-day activity."
+                : "Today’s sales, returns, and inventory position in one place."}
             </ThemedText>
           </View>
 
-          <View style={styles.shopMeta}>
-            <MetaPill icon="account-key-outline" label={roleLabel} />
-            <MetaPill icon="cash-multiple" label={shop.currencyCode} />
-            <MetaPill icon="map-clock-outline" label={shop.timezone} />
-          </View>
-
-          <Link asChild href="/pos">
-            <Pressable
-              accessibilityLabel="Open point of sale"
-              style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}>
-              <MaterialCommunityIcons
-                color={Colors.light.surface}
-                name="qrcode-scan"
-                size={22}
-              />
-              <ThemedText style={styles.primaryActionText} type="smallBold">
-                Open POS
-              </ThemedText>
-              <MaterialCommunityIcons
-                color={Colors.light.surface}
-                name="arrow-right"
-                size={20}
-              />
-            </Pressable>
-          </Link>
-        </View>
-
-        <View style={styles.heroMedia}>
-          <Image
-            accessibilityLabel="Shop worker scanning a product label at an organized clothing store counter"
-            accessible
-            resizeMode="cover"
-            source={overviewImage}
-            style={styles.heroImage}
-          />
-          <View style={styles.activeBadge}>
+          <View style={styles.activeShopPill}>
             <View style={styles.activeDot} />
             <ThemedText style={styles.activeText} type="smallBold">
               ACTIVE SHOP
             </ThemedText>
           </View>
+        </View>
+
+        <View style={styles.shopMeta}>
+          <MetaPill icon="account-key-outline" label={roleLabel} />
+          <MetaPill icon="cash-multiple" label={shop.currencyCode} />
+          <MetaPill icon="map-clock-outline" label={shop.timezone} />
         </View>
       </View>
 
@@ -209,28 +173,28 @@ export default function OverviewScreen() {
 
         <View style={styles.actions}>
           <DashboardActionCard
-            description="Scan SKUs, build a cart, take cash, and process exact-price returns."
+            description="Sell by QR and process returns."
             emphasis
             href="/pos"
             icon="qrcode-scan"
             status="Ready"
-            title="Open point of sale"
+            title="Point of sale"
           />
           {!isCashier ? (
             <DashboardActionCard
-              description="Create categories, add stock, review batches, and print unit labels."
+              description="Manage categories, stock, and labels."
               href="/inventory"
               icon="package-variant-closed"
               status="Live"
-              title="Manage inventory"
+              title="Inventory"
             />
           ) : null}
           <DashboardActionCard
-            description="Open account controls and see reporting and later operational modules."
+            description="Account controls and future reports."
             href="/more"
             icon="chart-box-outline"
             status="Upcoming"
-            title="Operations and reports"
+            title="Operations"
           />
         </View>
       </View>
@@ -307,37 +271,27 @@ function formatRole(role: "cashier" | "manager" | "owner") {
 }
 
 const styles = StyleSheet.create({
-  heroCard: {
-    backgroundColor: "#EAF2EC",
-    borderColor: Colors.light.border,
-    borderRadius: Radius.large,
-    borderWidth: 1,
+  pageHeader: { gap: Spacing.three },
+  headerRow: {
+    alignItems: "flex-start",
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: Spacing.four,
-    overflow: "hidden",
-    padding: Spacing.four,
-  },
-  heroCopy: {
-    flexBasis: 300,
-    flexGrow: 1,
-    gap: Spacing.four,
-    justifyContent: "center",
-    minWidth: 0,
+    gap: Spacing.three,
+    justifyContent: "space-between",
   },
   eyebrow: {
     alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: Colors.light.surface,
-    borderRadius: Radius.pill,
     flexDirection: "row",
     gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
   },
   eyebrowText: { color: Colors.light.primary, letterSpacing: 0.8 },
-  heading: { gap: Spacing.two },
-  title: { fontSize: 38, lineHeight: 44 },
+  heading: {
+    flexBasis: 280,
+    flexGrow: 1,
+    gap: Spacing.two,
+    minWidth: 0,
+  },
+  title: { fontSize: 32, lineHeight: 38 },
   shopMeta: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.two },
   metaPill: {
     alignItems: "center",
@@ -350,41 +304,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
   },
-  primaryAction: {
+  activeShopPill: {
     alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: Colors.light.primary,
-    borderRadius: Radius.medium,
-    flexDirection: "row",
-    gap: Spacing.two,
-    minHeight: 48,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-  },
-  primaryActionText: { color: Colors.light.surface },
-  heroMedia: {
-    flexBasis: 320,
-    flexGrow: 1,
-    justifyContent: "center",
-    minWidth: 0,
-    position: "relative",
-  },
-  heroImage: {
-    aspectRatio: 3 / 2,
-    borderRadius: Radius.medium,
-    width: "100%",
-  },
-  activeBadge: {
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    backgroundColor: Colors.light.primaryMuted,
     borderRadius: Radius.pill,
-    bottom: Spacing.three,
     flexDirection: "row",
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    position: "absolute",
-    right: Spacing.three,
   },
   activeDot: {
     backgroundColor: Colors.light.primary,
@@ -441,8 +368,7 @@ const styles = StyleSheet.create({
     width: 40,
   },
   metricValue: { fontSize: 21, lineHeight: 27 },
-  actions: { gap: Spacing.three },
-  pressed: { opacity: 0.78 },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.three },
   loadingState: {
     alignItems: "center",
     flex: 1,
