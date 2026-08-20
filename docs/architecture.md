@@ -63,4 +63,10 @@ Every active owner, manager, or cashier can resolve a stored `RSM:1:SKU:<sku>` p
 
 Cash checkout is one idempotent Convex mutation. It revalidates 1–50 unique in-stock units, snapshots their original buying costs and negotiated selling prices, creates the immutable sale/items/payment records, updates running business-day totals, and marks the units sold atomically. The client retains its request key and cart until the server acknowledges the sale.
 
-The first successful sale opens business day 1 automatically. Owners and managers can explicitly close a nonempty day; closing freezes its totals and immediately opens the next numbered day. Cashiers can view safe sales totals but cannot close a day or receive cost/profit data. Credit sales, offline outbox behavior, returns, and historical adjustments remain later milestones.
+The first successful transaction opens business day 1 automatically. Owners and managers can explicitly close a day containing sales or returns; closing freezes its totals and immediately opens the next numbered day. Cashiers can view safe sales, refund, and net-cash totals but cannot close a day or receive cost/profit data.
+
+## Returns and adjustments
+
+Every cash return is an immutable, idempotent record linked to one sale item, its original sale and business day, the permanent unit, the processing business day, condition, reason, operator, and exact original selling price. A returned sale item cannot be returned twice. Resalable returns restore the existing unit to `in_stock`; damaged returns set it to `damaged`, and only owners or managers may choose that condition.
+
+Returns never mutate the original sale or a closed business day. Their refund, condition counts, and any resalable cost recovery are posted to the current open day, allowing a later return to appear as an explicit adjustment. Damaged buying cost remains traceable through the original sale item, but a separate damage-expense policy is deferred. Credit sales and offline outbox behavior remain later milestones.

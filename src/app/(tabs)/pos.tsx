@@ -31,6 +31,28 @@ import {
   parsePosInput,
   type PosCartItem,
 } from "@/lib/pos-domain";
+import {
+  assertCanSwitchPosMode,
+  returnReasonLabels,
+  returnReasons,
+  validateReturnDetails,
+  type ReturnCondition,
+  type ReturnReason,
+} from "@/lib/return-domain";
+
+type PosMode = "return" | "sale";
+
+type ReturnProduct = {
+  canMarkDamaged: boolean;
+  categoryCode: string;
+  categoryName: string;
+  originalSellingPriceMinor: number;
+  originalSoldAt: number;
+  saleItemId: Id<"saleItems">;
+  saleNumber: number;
+  sku: string;
+  unitId: Id<"inventoryUnits">;
+};
 
 export default function PosScreen() {
   const convex = useConvex();
@@ -39,23 +61,32 @@ export default function PosScreen() {
   const shopContext = useQuery(api.shops.getCurrentForUser);
   const currentDay = useQuery(api.pos.getCurrentBusinessDay);
   const completeCashSale = useMutation(api.pos.completeCashSale);
+  const completeCashReturn = useMutation(api.pos.completeCashReturn);
   const closeCurrentBusinessDay = useMutation(api.pos.closeCurrentBusinessDay);
   const saleRequestKey = useRef(Crypto.randomUUID());
+  const returnRequestKey = useRef(Crypto.randomUUID());
   const closeRequestKey = useRef(Crypto.randomUUID());
   const lookupLock = useRef(false);
   const scanLock = useRef(false);
   const cartRef = useRef<PosCartItem[]>([]);
+  const [mode, setMode] = useState<PosMode>("sale");
   const [manualInput, setManualInput] = useState("");
   const [cart, setCart] = useState<PosCartItem[]>([]);
   const [cashTendered, setCashTendered] = useState("");
+  const [returnProduct, setReturnProduct] = useState<ReturnProduct | null>(null);
+  const [returnCondition, setReturnCondition] = useState<ReturnCondition>("resalable");
+  const [returnReason, setReturnReason] = useState<ReturnReason>("changed_mind");
+  const [returnNote, setReturnNote] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [closingDay, setClosingDay] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanLocked, setScanLocked] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [confirmingSale, setConfirmingSale] = useState(false);
+  const [confirmingReturn, setConfirmingReturn] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "error" | "success";
     message: string;
@@ -87,6 +118,7 @@ export default function PosScreen() {
   } catch {
     changeMinor = null;
   }
+  const busy = checkingOut || returning;
 
   const addProduct = async (input: string) => {
     if (lookupLock.current) return;
@@ -94,23 +126,37 @@ export default function PosScreen() {
     setLookingUp(true);
     try {
       const sku = parsePosInput(input);
-      const result = await convex.query(api.pos.lookupUnit, { input: sku });
-      const nextCart = addPosCartItem(cartRef.current, {
-        categoryCode: result.categoryCode,
-        categoryName: result.categoryName,
-        sellingPrice: "",
-        sku: result.sku,
-        unitId: result.unitId,
-      });
-      cartRef.current = nextCart;
-      setCart(nextCart);
+      if (mode === "return") {
+        const result = await convex.query(api.pos.lookupSoldUnitForReturn, {
+          input: sku,
+        });
+        setReturnProduct(result);
+        setReturnCondition("resalable");
+        setReturnReason("changed_mind");
+        setReturnNote("");
+      } else {
+        const result = await convex.query(api.pos.lookupUnit, { input: sku });
+        const nextCart = addPosCartItem(cartRef.current, {
+          categoryCode: result.categoryCode,
+          categoryName: result.categoryName,
+          sellingPrice: "",
+          sku: result.sku,
+          unitId: result.unitId,
+        });
+        cartRef.current = nextCart;
+        setCart(nextCart);
+      }
       setManualInput("");
       setNotice(null);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Try again.";
       setNotice({
         kind: "error",
-        message: error instanceof Error ? error.message : "Try again.",
-        title: "Product not added",
+        message:
+          mode === "sale" && message.includes("not available for sale")
+            ? `${message} Switch to Return mode to process a sold product.`
+            : message,
+        title: mode === "sale" ? "Product not added" : "Return not started",
       });
     } finally {
       lookupLock.current = false;
@@ -203,6 +249,80 @@ export default function PosScreen() {
     }
   };
 
+  const switchMode = (nextMode: PosMode) => {
+    if (nextMode === mode) return;
+    try {
+      if (nextMode === "return") assertCanSwitchPosMode(cartRef.current.length);
+      setMode(nextMode);
+      setManualInput("");
+      setReturnProduct(null);
+      setReturnCondition("resalable");
+      setReturnReason("changed_mind");
+      setReturnNote("");
+      setConfirmingReturn(false);
+      setConfirmingSale(false);
+      setScannerOpen(false);
+      setNotice(null);
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Try again.",
+        title: "Cannot switch mode",
+      });
+    }
+  };
+
+  const confirmReturn = () => {
+    try {
+      validateReturnDetails(returnReason, returnNote);
+      setScannerOpen(false);
+      setConfirmingReturn(true);
+      setNotice(null);
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Try again.",
+        title: "Return details required",
+      });
+    }
+  };
+
+  const submitReturn = async () => {
+    if (!returnProduct) return;
+    try {
+      const details = validateReturnDetails(returnReason, returnNote);
+      setReturning(true);
+      const receipt = await completeCashReturn({
+        condition: returnCondition,
+        ...details,
+        requestKey: returnRequestKey.current,
+        saleItemId: returnProduct.saleItemId,
+      });
+      returnRequestKey.current = Crypto.randomUUID();
+      setReturnProduct(null);
+      setReturnCondition("resalable");
+      setReturnReason("changed_mind");
+      setReturnNote("");
+      setConfirmingReturn(false);
+      setNotice({
+        kind: "success",
+        message:
+          receipt.condition === "resalable"
+            ? `${receipt.sku} is back in stock. Refund ${formatMoney(receipt.refundAmountMinor, currencyCode)} in cash.`
+            : `${receipt.sku} is marked damaged and cannot be sold. Refund ${formatMoney(receipt.refundAmountMinor, currencyCode)} in cash.`,
+        title: "Return complete",
+      });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Try again.",
+        title: "Return not completed",
+      });
+    } finally {
+      setReturning(false);
+    }
+  };
+
   const closeDay = async () => {
     setClosingDay(true);
     try {
@@ -213,7 +333,7 @@ export default function PosScreen() {
       setConfirmingClose(false);
       setNotice({
         kind: "success",
-        message: `${result.saleCount} sales and ${result.unitCount} products. Gross sales: ${formatMoney(result.grossSalesMinor, currencyCode)}. Gross profit: ${formatMoney(result.grossProfitMinor, currencyCode)}. Day ${result.nextDayNumber} is now open.`,
+        message: `${result.saleCount} sales and ${result.returnCount} returns. Gross sales: ${formatMoney(result.grossSalesMinor, currencyCode)}. Refunds: ${formatMoney(result.cashRefundedMinor, currencyCode)}. Net cash: ${formatMoney(result.netCashMinor, currencyCode)}. Adjusted gross profit: ${formatMoney(result.adjustedGrossProfitMinor, currencyCode)}. Day ${result.nextDayNumber} is now open.`,
         title: `Day ${result.closedDayNumber} closed`,
       });
     } catch (error) {
@@ -234,9 +354,13 @@ export default function PosScreen() {
   return (
     <AppScreen>
       <InventoryHeader
-        description="Scan or enter each permanent SKU, set its negotiated selling price, and complete one cash transaction."
+        description={
+          mode === "sale"
+            ? "Scan permanent SKUs, set negotiated prices, and complete one cash transaction."
+            : "Scan one sold SKU, record its condition and reason, and refund its original cash price."
+        }
         eyebrow="POINT OF SALE"
-        title="Cash sale"
+        title={mode === "sale" ? "Cash sale" : "Product return"}
       />
 
       {notice ? (
@@ -266,26 +390,49 @@ export default function PosScreen() {
       ) : null}
 
       <InventoryCard>
+        <ThemedText type="subtitle">Transaction mode</ThemedText>
+        <View style={styles.modeActions}>
+          <InventoryButton
+            icon="cart-outline"
+            label="Sale"
+            onPress={() => switchMode("sale")}
+            secondary={mode !== "sale"}
+          />
+          <InventoryButton
+            icon="cash-refund"
+            label="Return"
+            onPress={() => switchMode("return")}
+            secondary={mode !== "return"}
+          />
+        </View>
+      </InventoryCard>
+
+      <InventoryCard>
         <View style={styles.sectionHeading}>
           <ThemedText type="subtitle">
             {currentDay ? `Business day ${currentDay.dayNumber}` : "First business day"}
           </ThemedText>
           <ThemedText themeColor="textSecondary" type="small">
             {currentDay
-              ? `${currentDay.saleCount} sales · ${currentDay.unitCount} products · ${formatMoney(currentDay.grossSalesMinor, currencyCode)}`
-              : "Day 1 opens automatically when the first sale is completed."}
+              ? `${currentDay.saleCount} sales · ${formatMoney(currentDay.grossSalesMinor, currencyCode)} gross · ${currentDay.returnCount} returns · ${formatMoney(currentDay.cashRefundedMinor, currencyCode)} refunded`
+              : "Day 1 opens automatically with the first transaction."}
+          </ThemedText>
+          <ThemedText themeColor="textSecondary" type="small">
+            {currentDay ? `Net cash: ${formatMoney(currentDay.netCashMinor, currencyCode)}` : null}
           </ThemedText>
         </View>
       </InventoryCard>
 
       <InventoryCard>
-        <ThemedText type="subtitle">1. Add products</ThemedText>
+        <ThemedText type="subtitle">
+          1. {mode === "sale" ? "Add products" : "Find sold product"}
+        </ThemedText>
         <ThemedText themeColor="textSecondary" type="small">
           Scan the label with this device, enter the printed SKU, or paste the QR payload.
         </ThemedText>
         <View style={styles.scannerActions}>
           <InventoryButton
-            disabled={checkingOut}
+            disabled={busy}
             icon="qrcode-scan"
             label={scannerOpen ? "Scanner open" : "Scan QR"}
             onPress={() => void openScanner()}
@@ -338,7 +485,7 @@ export default function PosScreen() {
             <InventoryField
               autoCapitalize="characters"
               autoCorrect={false}
-              editable={!checkingOut}
+              editable={!busy}
               label="SKU or QR payload"
               onChangeText={setManualInput}
               onSubmitEditing={() => void addProduct(manualInput)}
@@ -348,15 +495,17 @@ export default function PosScreen() {
             />
           </View>
           <InventoryButton
-            disabled={!manualInput.trim() || checkingOut}
-            icon="plus"
-            label="Add"
+            disabled={!manualInput.trim() || busy}
+            icon={mode === "sale" ? "plus" : "magnify"}
+            label={mode === "sale" ? "Add" : "Find sold item"}
             loading={lookingUp}
             onPress={() => void addProduct(manualInput)}
           />
         </View>
       </InventoryCard>
 
+      {mode === "sale" ? (
+        <>
       <View style={styles.section}>
         <ThemedText type="subtitle">2. Cart ({cart.length})</ThemedText>
         <InventoryCard>
@@ -473,6 +622,139 @@ export default function PosScreen() {
         ) : null}
       </InventoryCard>
 
+        </>
+      ) : (
+        <InventoryCard>
+          <ThemedText type="subtitle">2. Review return</ThemedText>
+          {!returnProduct ? (
+            <InventoryEmpty
+              description="Scan a sold label or enter its permanent SKU to begin one return."
+              icon="cash-refund"
+              title="No sold product selected"
+            />
+          ) : (
+            <>
+              <View style={styles.returnIdentity}>
+                <View style={styles.categoryBadge}>
+                  <ThemedText style={styles.categoryCode} type="smallBold">
+                    {returnProduct.categoryCode}
+                  </ThemedText>
+                </View>
+                <View style={styles.cartIdentity}>
+                  <ThemedText type="smallBold">{returnProduct.categoryName}</ThemedText>
+                  <ThemedText type="code">{returnProduct.sku}</ThemedText>
+                  <ThemedText themeColor="textSecondary" type="small">
+                    Sale {String(returnProduct.saleNumber).padStart(4, "0")} · {new Date(returnProduct.originalSoldAt).toLocaleString()}
+                  </ThemedText>
+                </View>
+              </View>
+
+              <View style={styles.totalRow}>
+                <ThemedText themeColor="textSecondary">Cash refund</ThemedText>
+                <ThemedText type="subtitle">
+                  {formatMoney(returnProduct.originalSellingPriceMinor, currencyCode)}
+                </ThemedText>
+              </View>
+
+              <View style={styles.sectionHeading}>
+                <ThemedText type="smallBold">Product condition</ThemedText>
+                <View style={styles.modeActions}>
+                  <InventoryButton
+                    icon="package-variant-closed-check"
+                    label="Resalable"
+                    onPress={() => setReturnCondition("resalable")}
+                    secondary={returnCondition !== "resalable"}
+                  />
+                  {returnProduct.canMarkDamaged ? (
+                    <InventoryButton
+                      icon="package-variant-closed-remove"
+                      label="Damaged"
+                      onPress={() => setReturnCondition("damaged")}
+                      secondary={returnCondition !== "damaged"}
+                    />
+                  ) : null}
+                </View>
+                <ThemedText themeColor="textSecondary" type="small">
+                  {returnCondition === "resalable"
+                    ? "The same SKU becomes available for sale again."
+                    : "The SKU remains unavailable and is recorded as damaged."}
+                </ThemedText>
+                {!returnProduct.canMarkDamaged ? (
+                  <ThemedText themeColor="textSecondary" type="small">
+                    Only an owner or manager can mark a returned product as damaged.
+                  </ThemedText>
+                ) : null}
+              </View>
+
+              <View style={styles.sectionHeading}>
+                <ThemedText type="smallBold">Return reason</ThemedText>
+                <View style={styles.reasonGrid}>
+                  {returnReasons.map((reason) => {
+                    const selected = returnReason === reason;
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        key={reason}
+                        onPress={() => setReturnReason(reason)}
+                        style={({ pressed }) => [
+                          styles.reasonOption,
+                          selected && styles.reasonOptionSelected,
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText
+                          style={selected ? styles.reasonTextSelected : undefined}
+                          type="smallBold">
+                          {returnReasonLabels[reason]}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <InventoryField
+                editable={!returning}
+                label={returnReason === "other" ? "Return note (required)" : "Return note (optional)"}
+                maxLength={500}
+                multiline
+                onChangeText={setReturnNote}
+                placeholder="Add details for the audit trail."
+                value={returnNote}
+              />
+              <InventoryButton
+                disabled={returning}
+                icon="cash-refund"
+                label="Review cash return"
+                onPress={confirmReturn}
+              />
+
+              {confirmingReturn ? (
+                <View style={styles.confirmation}>
+                  <ThemedText type="smallBold">Confirm this cash return?</ThemedText>
+                  <ThemedText themeColor="textSecondary" type="small">
+                    Refund {formatMoney(returnProduct.originalSellingPriceMinor, currencyCode)} · {returnCondition === "resalable" ? "Return to stock" : "Mark damaged"} · {returnReasonLabels[returnReason]}
+                  </ThemedText>
+                  <View style={styles.confirmationActions}>
+                    <InventoryButton
+                      icon="cash-refund"
+                      label="Confirm return"
+                      loading={returning}
+                      onPress={() => void submitReturn()}
+                    />
+                    <InventoryButton
+                      label="Cancel"
+                      onPress={() => setConfirmingReturn(false)}
+                      secondary
+                    />
+                  </View>
+                </View>
+              ) : null}
+            </>
+          )}
+        </InventoryCard>
+      )}
+
       {currentDay?.canCloseDay ? (
         <InventoryCard>
           <ThemedText type="subtitle">End Day</ThemedText>
@@ -480,7 +762,7 @@ export default function PosScreen() {
             Finalize today’s totals and immediately open the next business day.
           </ThemedText>
           <InventoryButton
-            disabled={currentDay.saleCount === 0 || cart.length > 0}
+            disabled={(currentDay.saleCount === 0 && currentDay.returnCount === 0) || cart.length > 0 || returning}
             label="End current day"
             loading={closingDay}
             onPress={confirmCloseDay}
@@ -490,7 +772,7 @@ export default function PosScreen() {
             <View style={styles.confirmation}>
               <ThemedText type="smallBold">End current business day?</ThemedText>
               <ThemedText themeColor="textSecondary" type="small">
-                This freezes the current totals and immediately opens the next business day.
+                This freezes sales, refunds, and net cash, then opens the next business day.
               </ThemedText>
               <View style={styles.confirmationActions}>
                 <InventoryButton
@@ -616,4 +898,32 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
   },
   confirmationActions: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.three },
+  modeActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.three,
+  },
+  reasonGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.two,
+  },
+  reasonOption: {
+    backgroundColor: Colors.light.surface,
+    borderColor: Colors.light.border,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  reasonOptionSelected: {
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
+  },
+  reasonTextSelected: { color: Colors.light.surface },
+  returnIdentity: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: Spacing.three,
+  },
 });

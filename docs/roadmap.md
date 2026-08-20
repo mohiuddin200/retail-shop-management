@@ -17,7 +17,7 @@
 - Physical A4 and 40 × 30 mm thermal print-and-scan proof - pending
 - Multi-item POS cart with QR/manual entry and cash payment - implementation complete; real-device acceptance pending
 - Explicit business-day open/close flow - implementation complete; authenticated acceptance pending
-- Resalable and damaged return handling
+- Resalable and damaged return handling - implementation complete; authenticated acceptance pending
 - Daily sales report
 
 ## Phase 2 — reconciliation and people

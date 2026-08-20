@@ -46,6 +46,8 @@ The current backend foundation includes:
 - Shop, membership, and category tables with shop-scoped indexes
 - Owner, manager, and cashier membership roles
 - A public health check plus authenticated user and shop functions
+- Atomic cash sales, immutable sale items and payments, and explicit business days
+- Exact-price resalable and damaged cash returns with closed-day adjustments
 
 Password reset and email verification require an email provider and must be configured before production launch. Never place secrets in an `EXPO_PUBLIC_` environment variable.
 

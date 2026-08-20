@@ -164,6 +164,421 @@ describe("POS product lookup", () => {
   });
 });
 
+describe("return lookup", () => {
+  it("lets a cashier resolve a sold SKU with its original price and no buying cost", async () => {
+    const seeded = await seedPosShop("cashier");
+    await seeded.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 45000,
+      items: [
+        { inventoryUnitId: seeded.unitIds[0], sellingPriceMinor: 45000 },
+      ],
+      requestKey: "14141414-1414-4414-8414-141414141414",
+    });
+
+    const result = await seeded.client.query(api.pos.lookupSoldUnitForReturn, {
+      input: "RSM:1:SKU:SHT-20260820-0001-001",
+    });
+
+    expect(result).toMatchObject({
+      canMarkDamaged: false,
+      categoryCode: "SHT",
+      categoryName: "Shirts",
+      originalSellingPriceMinor: 45000,
+      saleNumber: 1,
+      sku: "SHT-20260820-0001-001",
+      unitId: seeded.unitIds[0],
+    });
+    expect(JSON.stringify(result)).not.toContain("buyingPrice");
+    expect(JSON.stringify(result)).not.toContain("grossProfit");
+  });
+});
+
+describe("cash returns", () => {
+  it("returns a resalable unit to stock and is idempotent", async () => {
+    const seeded = await seedPosShop("cashier");
+    await seeded.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 45000,
+      items: [
+        { inventoryUnitId: seeded.unitIds[0], sellingPriceMinor: 45000 },
+      ],
+      requestKey: "15151515-1515-4515-8515-151515151515",
+    });
+    const lookup = await seeded.client.query(api.pos.lookupSoldUnitForReturn, {
+      input: "SHT-20260820-0001-001",
+    });
+    const request = {
+      condition: "resalable" as const,
+      note: " Customer needs a larger size. ",
+      reason: "size_or_fit" as const,
+      requestKey: "16161616-1616-4616-8616-161616161616",
+      saleItemId: lookup.saleItemId,
+    };
+
+    const receipt = await seeded.client.mutation(
+      api.pos.completeCashReturn,
+      request,
+    );
+
+    expect(receipt).toMatchObject({
+      businessDayNumber: 1,
+      condition: "resalable",
+      refundAmountMinor: 45000,
+      sku: "SHT-20260820-0001-001",
+    });
+    expect(JSON.stringify(receipt)).not.toContain("buyingPrice");
+    await expect(
+      seeded.client.mutation(api.pos.completeCashReturn, request),
+    ).resolves.toEqual(receipt);
+    await expect(
+      seeded.client.mutation(api.pos.completeCashReturn, {
+        ...request,
+        requestKey: "21212121-2121-4121-8121-212121212121",
+      }),
+    ).rejects.toThrow("already been returned");
+    await expect(
+      seeded.client.query(api.pos.lookupUnit, {
+        input: "SHT-20260820-0001-001",
+      }),
+    ).resolves.toMatchObject({ sku: "SHT-20260820-0001-001" });
+    await expect(
+      seeded.client.query(api.pos.getCurrentBusinessDay, {}),
+    ).resolves.toMatchObject({
+      cashCollectedMinor: 45000,
+      cashRefundedMinor: 45000,
+      damagedReturnCount: 0,
+      netCashMinor: 0,
+      netSalesMinor: 0,
+      resalableReturnCount: 1,
+      returnCount: 1,
+    });
+    const current = await seeded.client.query(api.pos.getCurrentBusinessDay, {});
+    expect(JSON.stringify(current)).not.toContain("costRecovered");
+    expect(JSON.stringify(current)).not.toContain("grossProfit");
+  });
+
+  it("posts a late return to the successor day and closes a return-only day", async () => {
+    const seeded = await seedPosShop("owner");
+    await seeded.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 45000,
+      items: [
+        { inventoryUnitId: seeded.unitIds[0], sellingPriceMinor: 45000 },
+      ],
+      requestKey: "17171717-1717-4717-8717-171717171717",
+    });
+    const lookup = await seeded.client.query(api.pos.lookupSoldUnitForReturn, {
+      input: "SHT-20260820-0001-001",
+    });
+    const dayOne = await seeded.client.mutation(
+      api.pos.closeCurrentBusinessDay,
+      { requestKey: "18181818-1818-4818-8818-181818181818" },
+    );
+
+    await seeded.client.mutation(api.pos.completeCashReturn, {
+      condition: "resalable",
+      reason: "changed_mind",
+      requestKey: "19191919-1919-4919-8919-191919191919",
+      saleItemId: lookup.saleItemId,
+    });
+    const current = await seeded.client.query(api.pos.getCurrentBusinessDay, {});
+
+    expect(dayOne).toMatchObject({
+      cashRefundedMinor: 0,
+      closedDayNumber: 1,
+      grossSalesMinor: 45000,
+      netSalesMinor: 45000,
+      returnCount: 0,
+    });
+    expect(current).toMatchObject({
+      cashRefundedMinor: 45000,
+      dayNumber: 2,
+      netCashMinor: -45000,
+      netSalesMinor: -45000,
+      returnCount: 1,
+      saleCount: 0,
+    });
+
+    await expect(
+      seeded.client.mutation(api.pos.closeCurrentBusinessDay, {
+        requestKey: "20202020-2020-4020-8020-202020202020",
+      }),
+    ).resolves.toMatchObject({
+      adjustedGrossProfitMinor: -15000,
+      cashRefundedMinor: 45000,
+      closedDayNumber: 2,
+      costRecoveredMinor: 30000,
+      netCashMinor: -45000,
+      netSalesMinor: -45000,
+      nextDayNumber: 3,
+      returnCount: 1,
+      saleCount: 0,
+    });
+  });
+
+  it("denies damaged returns to cashiers and lets a manager quarantine the unit", async () => {
+    const cashier = await seedPosShop("cashier");
+    await cashier.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 45000,
+      items: [
+        { inventoryUnitId: cashier.unitIds[0], sellingPriceMinor: 45000 },
+      ],
+      requestKey: "22222222-2222-4222-8222-222222222223",
+    });
+    const cashierLookup = await cashier.client.query(
+      api.pos.lookupSoldUnitForReturn,
+      { input: "SHT-20260820-0001-001" },
+    );
+    await expect(
+      cashier.client.mutation(api.pos.completeCashReturn, {
+        condition: "damaged",
+        reason: "defective_or_damaged",
+        requestKey: "23232323-2323-4323-8323-232323232323",
+        saleItemId: cashierLookup.saleItemId,
+      }),
+    ).rejects.toThrow("Only an owner or manager");
+
+    const manager = await seedPosShop("manager");
+    await manager.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 45000,
+      items: [
+        { inventoryUnitId: manager.unitIds[0], sellingPriceMinor: 45000 },
+      ],
+      requestKey: "24242424-2424-4424-8424-242424242424",
+    });
+    const managerLookup = await manager.client.query(
+      api.pos.lookupSoldUnitForReturn,
+      { input: "SHT-20260820-0001-001" },
+    );
+
+    await expect(
+      manager.client.mutation(api.pos.completeCashReturn, {
+        condition: "damaged",
+        note: "Seam split after use.",
+        reason: "defective_or_damaged",
+        requestKey: "25252525-2525-4525-8525-252525252525",
+        saleItemId: managerLookup.saleItemId,
+      }),
+    ).resolves.toMatchObject({
+      condition: "damaged",
+      refundAmountMinor: 45000,
+    });
+    await expect(
+      manager.client.query(api.pos.lookupUnit, {
+        input: "SHT-20260820-0001-001",
+      }),
+    ).rejects.toThrow("not available for sale");
+    await expect(
+      manager.client.query(api.pos.getCurrentBusinessDay, {}),
+    ).resolves.toMatchObject({
+      cashRefundedMinor: 45000,
+      damagedReturnCount: 1,
+      resalableReturnCount: 0,
+      returnCount: 1,
+    });
+  });
+
+  it("can sell a resalable return again and return only its latest sale", async () => {
+    const seeded = await seedPosShop("cashier");
+    await seeded.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 45000,
+      items: [
+        { inventoryUnitId: seeded.unitIds[0], sellingPriceMinor: 45000 },
+      ],
+      requestKey: "26262626-2626-4626-8626-262626262626",
+    });
+    const firstLookup = await seeded.client.query(
+      api.pos.lookupSoldUnitForReturn,
+      { input: "SHT-20260820-0001-001" },
+    );
+    await seeded.client.mutation(api.pos.completeCashReturn, {
+      condition: "resalable",
+      reason: "changed_mind",
+      requestKey: "27272727-2727-4727-8727-272727272727",
+      saleItemId: firstLookup.saleItemId,
+    });
+
+    await seeded.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 50000,
+      items: [
+        { inventoryUnitId: seeded.unitIds[0], sellingPriceMinor: 50000 },
+      ],
+      requestKey: "28282828-2828-4828-8828-282828282828",
+    });
+    const secondLookup = await seeded.client.query(
+      api.pos.lookupSoldUnitForReturn,
+      { input: "SHT-20260820-0001-001" },
+    );
+    expect(secondLookup.saleItemId).not.toBe(firstLookup.saleItemId);
+    expect(secondLookup).toMatchObject({
+      originalSellingPriceMinor: 50000,
+      saleNumber: 2,
+    });
+
+    await expect(
+      seeded.client.mutation(api.pos.completeCashReturn, {
+        condition: "resalable",
+        reason: "wrong_item",
+        requestKey: "29292929-2929-4929-8929-292929292929",
+        saleItemId: secondLookup.saleItemId,
+      }),
+    ).resolves.toMatchObject({ refundAmountMinor: 50000 });
+    await expect(
+      seeded.client.query(api.pos.getCurrentBusinessDay, {}),
+    ).resolves.toMatchObject({
+      cashRefundedMinor: 95000,
+      resalableReturnCount: 2,
+      returnCount: 2,
+      saleCount: 2,
+    });
+  });
+
+  it("requires auditable details and completes only one concurrent return", async () => {
+    const seeded = await seedPosShop("cashier");
+    await seeded.client.mutation(api.pos.completeCashSale, {
+      cashTenderedMinor: 45000,
+      items: [
+        { inventoryUnitId: seeded.unitIds[0], sellingPriceMinor: 45000 },
+      ],
+      requestKey: "30303030-3030-4030-8030-303030303030",
+    });
+    const lookup = await seeded.client.query(api.pos.lookupSoldUnitForReturn, {
+      input: "SHT-20260820-0001-001",
+    });
+
+    await expect(
+      seeded.client.mutation(api.pos.completeCashReturn, {
+        condition: "resalable",
+        reason: "other",
+        requestKey: "31313131-3131-4131-8131-313131313131",
+        saleItemId: lookup.saleItemId,
+      }),
+    ).rejects.toThrow("Describe the return reason");
+
+    const settled = await Promise.allSettled([
+      seeded.client.mutation(api.pos.completeCashReturn, {
+        condition: "resalable",
+        reason: "changed_mind",
+        requestKey: "32323232-3232-4232-8232-323232323232",
+        saleItemId: lookup.saleItemId,
+      }),
+      seeded.client.mutation(api.pos.completeCashReturn, {
+        condition: "resalable",
+        reason: "size_or_fit",
+        requestKey: "33333333-3333-4333-8333-333333333334",
+        saleItemId: lookup.saleItemId,
+      }),
+    ]);
+
+    expect(
+      settled.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      settled.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    await expect(
+      seeded.client.query(api.pos.getCurrentBusinessDay, {}),
+    ).resolves.toMatchObject({ returnCount: 1 });
+  });
+
+  it("does not expose or return another shop's sold product", async () => {
+    const seeded = await seedPosShop("owner");
+    const foreign = await seeded.t.run(async (ctx) => {
+      const now = Date.now();
+      const userId = await ctx.db.insert("users", {});
+      const shopId = await ctx.db.insert("shops", {
+        name: "Foreign Shop",
+        currencyCode: "BDT",
+        timezone: "Asia/Dhaka",
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const categoryId = await ctx.db.insert("categories", {
+        shopId,
+        name: "Foreign Shirts",
+        code: "FOR",
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const batchId = await ctx.db.insert("productBatches", {
+        shopId,
+        batchNumber: 1,
+        buyingPriceMinor: 10000,
+        categoryId,
+        createdAt: now,
+        createdBy: userId,
+        intakeDate: "2026-08-20",
+        quantity: 1,
+        requestKey: "34343434-3434-4434-8434-343434343434",
+      });
+      const inventoryUnitId = await ctx.db.insert("inventoryUnits", {
+        shopId,
+        batchId,
+        buyingPriceMinor: 10000,
+        categoryId,
+        createdAt: now,
+        createdBy: userId,
+        qrPayload: "RSM:1:SKU:FOR-20260820-0001-001",
+        sku: "FOR-20260820-0001-001",
+        status: "sold",
+        updatedAt: now,
+      });
+      const businessDayId = await ctx.db.insert("businessDays", {
+        shopId,
+        dayNumber: 1,
+        status: "open",
+        openedAt: now,
+        openedBy: userId,
+        saleCount: 1,
+        unitCount: 1,
+        grossSalesMinor: 20000,
+        cashCollectedMinor: 20000,
+        costOfGoodsMinor: 10000,
+        grossProfitMinor: 10000,
+      });
+      const saleId = await ctx.db.insert("sales", {
+        shopId,
+        businessDayId,
+        saleNumber: 1,
+        paymentType: "cash",
+        unitCount: 1,
+        totalMinor: 20000,
+        costOfGoodsMinor: 10000,
+        grossProfitMinor: 10000,
+        requestKey: "35353535-3535-4535-8535-353535353535",
+        createdBy: userId,
+        createdAt: now,
+      });
+      const saleItemId = await ctx.db.insert("saleItems", {
+        shopId,
+        saleId,
+        businessDayId,
+        inventoryUnitId,
+        categoryId,
+        sku: "FOR-20260820-0001-001",
+        buyingPriceMinor: 10000,
+        sellingPriceMinor: 20000,
+        createdAt: now,
+      });
+      return { saleItemId };
+    });
+
+    await expect(
+      seeded.client.query(api.pos.lookupSoldUnitForReturn, {
+        input: "FOR-20260820-0001-001",
+      }),
+    ).rejects.toThrow("Product not found in this shop");
+    await expect(
+      seeded.client.mutation(api.pos.completeCashReturn, {
+        condition: "resalable",
+        reason: "wrong_item",
+        requestKey: "36363636-3636-4636-8636-363636363636",
+        saleItemId: foreign.saleItemId,
+      }),
+    ).rejects.toThrow("Original sale item not found in this shop");
+  });
+});
+
 describe("cash sale checkout", () => {
   it("sells multiple units atomically and returns the same receipt when retried", async () => {
     const seeded = await seedPosShop("cashier");

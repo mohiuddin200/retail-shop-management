@@ -104,6 +104,11 @@ export default defineSchema({
     cashCollectedMinor: v.number(),
     costOfGoodsMinor: v.number(),
     grossProfitMinor: v.number(),
+    returnCount: v.optional(v.number()),
+    resalableReturnCount: v.optional(v.number()),
+    damagedReturnCount: v.optional(v.number()),
+    cashRefundedMinor: v.optional(v.number()),
+    costRecoveredMinor: v.optional(v.number()),
   })
     .index("by_shop_and_status", ["shopId", "status"])
     .index("by_shop_and_day_number", ["shopId", "dayNumber"])
@@ -151,5 +156,32 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_sale", ["saleId"])
+    .index("by_business_day", ["businessDayId"]),
+  returns: defineTable({
+    shopId: v.id("shops"),
+    businessDayId: v.id("businessDays"),
+    originalBusinessDayId: v.id("businessDays"),
+    saleId: v.id("sales"),
+    saleItemId: v.id("saleItems"),
+    inventoryUnitId: v.id("inventoryUnits"),
+    sku: v.string(),
+    refundAmountMinor: v.number(),
+    costRecoveredMinor: v.number(),
+    condition: v.union(v.literal("resalable"), v.literal("damaged")),
+    reason: v.union(
+      v.literal("changed_mind"),
+      v.literal("size_or_fit"),
+      v.literal("wrong_item"),
+      v.literal("defective_or_damaged"),
+      v.literal("other"),
+    ),
+    note: v.optional(v.string()),
+    requestKey: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_shop", ["shopId"])
+    .index("by_shop_and_request_key", ["shopId", "requestKey"])
+    .index("by_sale_item", ["saleItemId"])
     .index("by_business_day", ["businessDayId"]),
 });

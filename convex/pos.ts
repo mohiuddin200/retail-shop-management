@@ -42,6 +42,62 @@ export const lookupUnit = query({
   },
 });
 
+export const lookupSoldUnitForReturn = query({
+  args: { input: v.string() },
+  handler: async (ctx, args) => {
+    const { membership, shop } = await requireActiveShop(ctx, posRoles);
+    const sku = normalizeSku(args.input);
+    const unit = await ctx.db
+      .query("inventoryUnits")
+      .withIndex("by_shop_and_sku", (q) =>
+        q.eq("shopId", shop._id).eq("sku", sku),
+      )
+      .unique();
+
+    if (!unit) {
+      throw new ConvexError("Product not found in this shop.");
+    }
+    if (unit.status !== "sold") {
+      throw new ConvexError("Only a currently sold product can be returned.");
+    }
+
+    const saleItem = await ctx.db
+      .query("saleItems")
+      .withIndex("by_inventory_unit", (q) =>
+        q.eq("inventoryUnitId", unit._id),
+      )
+      .order("desc")
+      .first();
+    if (!saleItem || saleItem.shopId !== shop._id) {
+      throw new ConvexError("Original sale item data is incomplete.");
+    }
+
+    const [category, sale] = await Promise.all([
+      ctx.db.get(unit.categoryId),
+      ctx.db.get(saleItem.saleId),
+    ]);
+    if (!category || category.shopId !== shop._id) {
+      throw new ConvexError("Product category data is incomplete.");
+    }
+    if (!sale || sale.shopId !== shop._id) {
+      throw new ConvexError("Original sale data is incomplete.");
+    }
+
+    return {
+      canMarkDamaged:
+        membership.role === "owner" || membership.role === "manager",
+      categoryCode: category.code,
+      categoryName: category.name,
+      originalSellingPriceMinor: saleItem.sellingPriceMinor,
+      originalSoldAt: sale.createdAt,
+      saleItemId: saleItem._id,
+      saleNumber: sale.saleNumber,
+      sku: unit.sku,
+      unitId: unit._id,
+    };
+  },
+});
+
 export const getCurrentBusinessDay = query({
   args: {},
   handler: async (ctx) => {
@@ -54,13 +110,20 @@ export const getCurrentBusinessDay = query({
       .unique();
     if (!businessDay) return null;
 
+    const cashRefundedMinor = businessDay.cashRefundedMinor ?? 0;
     return {
       canCloseDay:
         membership.role === "owner" || membership.role === "manager",
       cashCollectedMinor: businessDay.cashCollectedMinor,
+      cashRefundedMinor,
+      damagedReturnCount: businessDay.damagedReturnCount ?? 0,
       dayNumber: businessDay.dayNumber,
       grossSalesMinor: businessDay.grossSalesMinor,
+      netCashMinor: businessDay.cashCollectedMinor - cashRefundedMinor,
+      netSalesMinor: businessDay.grossSalesMinor - cashRefundedMinor,
       openedAt: businessDay.openedAt,
+      resalableReturnCount: businessDay.resalableReturnCount ?? 0,
+      returnCount: businessDay.returnCount ?? 0,
       saleCount: businessDay.saleCount,
       unitCount: businessDay.unitCount,
     };
@@ -211,6 +274,124 @@ export const completeCashSale = mutation({
   },
 });
 
+export const completeCashReturn = mutation({
+  args: {
+    condition: v.union(v.literal("resalable"), v.literal("damaged")),
+    note: v.optional(v.string()),
+    reason: v.union(
+      v.literal("changed_mind"),
+      v.literal("size_or_fit"),
+      v.literal("wrong_item"),
+      v.literal("defective_or_damaged"),
+      v.literal("other"),
+    ),
+    requestKey: v.string(),
+    saleItemId: v.id("saleItems"),
+  },
+  handler: async (ctx, args) => {
+    const { membership, shop, userId } = await requireActiveShop(ctx, posRoles);
+    const requestKey = validateRequestKey(args.requestKey);
+    const existing = await ctx.db
+      .query("returns")
+      .withIndex("by_shop_and_request_key", (q) =>
+        q.eq("shopId", shop._id).eq("requestKey", requestKey),
+      )
+      .unique();
+    if (existing) return returnReceipt(ctx, existing);
+
+    if (
+      args.condition === "damaged" &&
+      membership.role !== "owner" &&
+      membership.role !== "manager"
+    ) {
+      throw new ConvexError(
+        "Only an owner or manager can mark a returned product as damaged.",
+      );
+    }
+    const note = validateReturnNote(args.reason, args.note);
+    const saleItem = await ctx.db.get(args.saleItemId);
+    if (!saleItem || saleItem.shopId !== shop._id) {
+      throw new ConvexError("Original sale item not found in this shop.");
+    }
+    const existingForItem = await ctx.db
+      .query("returns")
+      .withIndex("by_sale_item", (q) => q.eq("saleItemId", saleItem._id))
+      .unique();
+    if (existingForItem) {
+      throw new ConvexError("This sold product has already been returned.");
+    }
+    const unit = await ctx.db.get(saleItem.inventoryUnitId);
+    if (!unit || unit.shopId !== shop._id) {
+      throw new ConvexError("Product not found in this shop.");
+    }
+    if (unit.status !== "sold") {
+      throw new ConvexError("This product is not currently eligible for return.");
+    }
+
+    const latestSaleItem = await ctx.db
+      .query("saleItems")
+      .withIndex("by_inventory_unit", (q) =>
+        q.eq("inventoryUnitId", unit._id),
+      )
+      .order("desc")
+      .first();
+    if (!latestSaleItem || latestSaleItem._id !== saleItem._id) {
+      throw new ConvexError("Only the product's latest sale can be returned.");
+    }
+    const sale = await ctx.db.get(saleItem.saleId);
+    if (!sale || sale.shopId !== shop._id) {
+      throw new ConvexError("Original sale data is incomplete.");
+    }
+
+    const now = Date.now();
+    const businessDay = await getOrCreateOpenBusinessDay(
+      ctx,
+      shop._id,
+      userId,
+      now,
+    );
+    const costRecoveredMinor =
+      args.condition === "resalable" ? saleItem.buyingPriceMinor : 0;
+    const returnId = await ctx.db.insert("returns", {
+      businessDayId: businessDay._id,
+      condition: args.condition,
+      costRecoveredMinor,
+      createdAt: now,
+      createdBy: userId,
+      inventoryUnitId: unit._id,
+      ...(note ? { note } : {}),
+      originalBusinessDayId: saleItem.businessDayId,
+      reason: args.reason,
+      refundAmountMinor: saleItem.sellingPriceMinor,
+      requestKey,
+      saleId: sale._id,
+      saleItemId: saleItem._id,
+      shopId: shop._id,
+      sku: unit.sku,
+    });
+    await ctx.db.patch(unit._id, {
+      status: args.condition === "resalable" ? "in_stock" : "damaged",
+      updatedAt: now,
+    });
+    await ctx.db.patch(businessDay._id, {
+      cashRefundedMinor:
+        (businessDay.cashRefundedMinor ?? 0) + saleItem.sellingPriceMinor,
+      costRecoveredMinor:
+        (businessDay.costRecoveredMinor ?? 0) + costRecoveredMinor,
+      damagedReturnCount:
+        (businessDay.damagedReturnCount ?? 0) +
+        (args.condition === "damaged" ? 1 : 0),
+      resalableReturnCount:
+        (businessDay.resalableReturnCount ?? 0) +
+        (args.condition === "resalable" ? 1 : 0),
+      returnCount: (businessDay.returnCount ?? 0) + 1,
+    });
+    const created = await ctx.db.get(returnId);
+    if (!created) throw new ConvexError("The return could not be completed.");
+    return returnReceipt(ctx, created);
+  },
+});
+
 export const closeCurrentBusinessDay = mutation({
   args: { requestKey: v.string() },
   handler: async (ctx, args) => {
@@ -246,7 +427,7 @@ export const closeCurrentBusinessDay = mutation({
     if (!current) {
       throw new ConvexError("There is no open business day to close.");
     }
-    if (current.saleCount === 0) {
+    if (current.saleCount === 0 && (current.returnCount ?? 0) === 0) {
       throw new ConvexError("An empty business day cannot be closed.");
     }
 
@@ -269,6 +450,11 @@ export const closeCurrentBusinessDay = mutation({
       cashCollectedMinor: 0,
       costOfGoodsMinor: 0,
       grossProfitMinor: 0,
+      returnCount: 0,
+      resalableReturnCount: 0,
+      damagedReturnCount: 0,
+      cashRefundedMinor: 0,
+      costRecoveredMinor: 0,
     });
     const [closed, successor] = await Promise.all([
       ctx.db.get(current._id),
@@ -333,6 +519,11 @@ async function getOrCreateOpenBusinessDay(
     cashCollectedMinor: 0,
     costOfGoodsMinor: 0,
     grossProfitMinor: 0,
+    returnCount: 0,
+    resalableReturnCount: 0,
+    damagedReturnCount: 0,
+    cashRefundedMinor: 0,
+    costRecoveredMinor: 0,
   });
   const businessDay = await ctx.db.get(businessDayId);
   if (!businessDay) throw new ConvexError("The business day could not be opened.");
@@ -360,18 +551,61 @@ async function saleReceipt(ctx: MutationCtx, sale: Doc<"sales">) {
   };
 }
 
+function validateReturnNote(
+  reason: Doc<"returns">["reason"],
+  value: string | undefined,
+) {
+  const note = value?.trim() ?? "";
+  if (note.length > 500) {
+    throw new ConvexError("Return notes must be 500 characters or fewer.");
+  }
+  if (reason === "other" && !note) {
+    throw new ConvexError(
+      "Describe the return reason when Other is selected.",
+    );
+  }
+  return note || undefined;
+}
+
+async function returnReceipt(ctx: MutationCtx, returned: Doc<"returns">) {
+  const businessDay = await ctx.db.get(returned.businessDayId);
+  if (!businessDay) {
+    throw new ConvexError("Return receipt data is incomplete.");
+  }
+  return {
+    businessDayId: businessDay._id,
+    businessDayNumber: businessDay.dayNumber,
+    condition: returned.condition,
+    createdAt: returned.createdAt,
+    refundAmountMinor: returned.refundAmountMinor,
+    returnId: returned._id,
+    sku: returned.sku,
+  };
+}
+
 function closeReceipt(
   closed: Doc<"businessDays">,
   successor: Doc<"businessDays">,
 ) {
+  const cashRefundedMinor = closed.cashRefundedMinor ?? 0;
+  const costRecoveredMinor = closed.costRecoveredMinor ?? 0;
   return {
+    adjustedGrossProfitMinor:
+      closed.grossProfitMinor - cashRefundedMinor + costRecoveredMinor,
     cashCollectedMinor: closed.cashCollectedMinor,
+    cashRefundedMinor,
     closedAt: closed.closedAt,
     closedDayNumber: closed.dayNumber,
     costOfGoodsMinor: closed.costOfGoodsMinor,
+    costRecoveredMinor,
+    damagedReturnCount: closed.damagedReturnCount ?? 0,
     grossProfitMinor: closed.grossProfitMinor,
     grossSalesMinor: closed.grossSalesMinor,
+    netCashMinor: closed.cashCollectedMinor - cashRefundedMinor,
+    netSalesMinor: closed.grossSalesMinor - cashRefundedMinor,
     nextDayNumber: successor.dayNumber,
+    resalableReturnCount: closed.resalableReturnCount ?? 0,
+    returnCount: closed.returnCount ?? 0,
     saleCount: closed.saleCount,
     unitCount: closed.unitCount,
   };

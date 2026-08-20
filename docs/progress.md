@@ -32,11 +32,13 @@ Last updated: 2026-08-20
 - [x] Add a multi-item cart with negotiated prices, cash tender, and change
 - [x] Complete cash sales atomically with immutable sale, item, and payment records
 - [x] Add retry-safe business-day creation and owner/manager End Day controls
+- [x] Add immutable one-unit cash returns with exact original-price refunds
+- [x] Restore resalable units and quarantine damaged returns with role enforcement
+- [x] Post late returns to the current business day without mutating closed days
 
 ## Next
 
-- [ ] Run authenticated real-device POS acceptance: scan QR, complete cash sale, verify change and sold-unit rejection, then close the day as owner/manager
-- [ ] Add resalable and damaged return handling
+- [ ] Run authenticated real-device POS and returns acceptance: sell by QR, refund resalable, resell, refund damaged as owner/manager, verify cashier denial, and close a return-only day
 - [ ] Add the finalized daily sales report
 - [ ] Add credit buyers, due balances, and repayments in Phase 2
 
